@@ -52,21 +52,25 @@ async function cleanPptx(file){
   return out.generateAsync({type:'blob',compression:'DEFLATE'});
 }
 function getProjectMeta(name){
-  const base=name.replace(/\\.(pdf|pptx)$/i,'');
-  const id=(base.match(/TWXBCB[0-9]+(?:-[0-9]{8})?/i)||[])[0]||'';
-  const dates=[...base.matchAll(/20\\d{2}[-.]?\\d{2}[-.]?\\d{2}/g)].map(m=>m[0]);
-  const date=dates.length>1?dates[dates.length-1]: (dates[0]||'');
-  const version=(base.match(/V\\d+(?:\\.\\d+)?/i)||[])[0]||'VER1.0';
+  const base=name.replace(/\.(pdf|pptx)$/i,'');
+  const idMatch=base.match(/TWXBCB\d+(?:-\d{8})?/i);
+  const id=idMatch?idMatch[0]:'';
+  const versionMatch=base.match(/V\d+(?:\.\d+)?/i);
+  const version=versionMatch?versionMatch[0]:'VER1.0';
+
   let title='';
   if(id){
-    const after=base.slice((base.toLowerCase().indexOf(id.toLowerCase())+id.length));
-    title=after
-      .replace(/^[-_]+/,'')
-      .replace(/20\\d{2}[-.]?\\d{2}[-.]?\\d{2}.*/,'')
-      .replace(/[-_]+$/,'')
-      .trim();
+    const after=base.slice(id.length).replace(/^[-_]+/,'');
+    title=after.split(/20\d{2}[-.]?\d{2}[-.]?\d{2}/)[0].replace(/[-_]+$/,'').trim();
   }
-  return {id,date:date.replace(/-/g,'.'),version,title:title||'紅外線BGA返修設備'};
+  if(!title){
+    const chinese=base.match(/[\u3400-\u9fff]{2,}/);
+    title=chinese?chinese[0]:'紅外線BGA返修設備';
+  }
+
+  const dates=[...base.matchAll(/20\d{2}[-.]?\d{2}[-.]?\d{2}/g)].map(m=>m[0]);
+  const date=dates.length?dates[dates.length-1]:'';
+  return {id,date:date.replace(/-/g,'.'),version,title};
 }
 function getTC(){
   try{return OpenCC.Converter({from:'cn',to:'tw'})}catch(_){return s=>s}
@@ -137,6 +141,45 @@ async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
   ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
 }
+async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
+  if(!logoData)return;
+
+  // 完整清除原 QUICK Logo 區域，不使用半透明遮蓋。
+  const x=w*.80, y=h*.015, rw=w*.20, rh=h*.14;
+  ctx.save();
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(x,y,rw,rh);
+  ctx.restore();
+
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      // JPG/PNG Logo 自動去除白底，讓 Logo 本體以透明背景貼入。
+      const src=document.createElement('canvas');
+      src.width=img.naturalWidth; src.height=img.naturalHeight;
+      const sctx=src.getContext('2d');
+      sctx.drawImage(img,0,0);
+      const imageData=sctx.getImageData(0,0,src.width,src.height);
+      const d=imageData.data;
+      for(let p=0;p<d.length;p+=4){
+        const r=d[p],g=d[p+1],b=d[p+2];
+        if(r>242 && g>242 && b>242)d[p+3]=0;
+      }
+      sctx.putImageData(imageData,0,0);
+
+      // 比前一版放大約 20%，但不超出頁面安全區。
+      const maxW=rw*.98,maxH=rh*.90;
+      const ratio=Math.min(maxW/src.width,maxH/src.height);
+      const lw=src.width*ratio,lh=src.height*ratio;
+      const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+      ctx.drawImage(src,lx,ly,lw,lh);
+      resolve();
+    };
+    img.onerror=reject;
+    img.src=logoData;
+  });
+}
+
 function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
   ctx.textAlign='center';
