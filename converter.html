@@ -86,11 +86,14 @@ function getTC(){
   }
 }
 function makeOutputName(originalName){
-  let base=String(originalName||'未命名').replace(/\\.(pdf|pptx)$/i,'');
-  // 不再加入「承邦轉檔」前綴；若來源檔本身已有，也一併移除。
-  base=base.replace(/^承邦轉檔[_\\-]?/,'');
-  // 檔名中的簡體中文轉為繁體中文，其他字元、專案編號與日期保持不變。
+  let base=String(originalName||'未命名');
+  base=base.replace(/\\.(pdf|pptx)$/i,'');
+  // 移除任何數量的「承邦轉檔」前綴（含底線、連字號或空白）。
+  base=base.replace(/^(?:承邦轉檔(?:[_\\-\\s]*)?)+/,'');
+  // 來源檔名的簡體中文一律轉成繁體中文。
   base=getTC()(base);
+  // 再做一次固定字串清理，避免任何舊版本名稱混入。
+  base=base.replace(/承邦轉檔/g,'').replace(/^[_\\-\\s]+/,'');
   return base+'.pptx';
 }
 function fitFont(ctx,text,maxWidth,start){
