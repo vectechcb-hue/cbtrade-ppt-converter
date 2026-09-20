@@ -144,8 +144,8 @@ async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
 async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
   if(!logoData)return;
 
-  // 完整清除原 QUICK Logo 區域，不使用半透明遮蓋。
-  const x=w*.80, y=h*.015, rw=w*.20, rh=h*.14;
+  // 清除 QUICK Logo 及其淡灰底圖，範圍加大，確保原 Logo 完全消失。
+  const x=w*.785, y=0, rw=w*.215, rh=h*.155;
   ctx.save();
   ctx.fillStyle='#FFFFFF';
   ctx.fillRect(x,y,rw,rh);
@@ -154,24 +154,43 @@ async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
   return new Promise((resolve,reject)=>{
     const img=new Image();
     img.onload=()=>{
-      // JPG/PNG Logo 自動去除白底，讓 Logo 本體以透明背景貼入。
       const src=document.createElement('canvas');
-      src.width=img.naturalWidth; src.height=img.naturalHeight;
-      const sctx=src.getContext('2d');
+      src.width=img.naturalWidth;
+      src.height=img.naturalHeight;
+      const sctx=src.getContext('2d',{willReadFrequently:true});
       sctx.drawImage(img,0,0);
+
+      // 強化去背：移除白色、淺灰色與低飽和度的淺色背景。
+      // 保留橘色／藍色 Logo 與深色文字。
       const imageData=sctx.getImageData(0,0,src.width,src.height);
       const d=imageData.data;
       for(let p=0;p<d.length;p+=4){
         const r=d[p],g=d[p+1],b=d[p+2];
-        if(r>242 && g>242 && b>242)d[p+3]=0;
+        const max=Math.max(r,g,b),min=Math.min(r,g,b);
+        const brightness=max/255;
+        const saturation=max===0?0:(max-min)/max;
+
+        // 純白與近白背景
+        if(brightness>0.86 && saturation<0.38){
+          d[p+3]=0;
+          continue;
+        }
+
+        // 淺灰／淡米色背景與掃描紙張底色
+        if(brightness>0.70 && saturation<0.20){
+          d[p+3]=0;
+        }
       }
       sctx.putImageData(imageData,0,0);
 
-      // 比前一版放大約 20%，但不超出頁面安全區。
-      const maxW=rw*.98,maxH=rh*.90;
+      // 大幅放大使用者 Logo，覆蓋原 QUICK Logo 位置。
+      const maxW=rw*.98;
+      const maxH=rh*.92;
       const ratio=Math.min(maxW/src.width,maxH/src.height);
-      const lw=src.width*ratio,lh=src.height*ratio;
-      const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+      const lw=src.width*ratio;
+      const lh=src.height*ratio;
+      const lx=x+(rw-lw)/2;
+      const ly=y+(rh-lh)/2;
       ctx.drawImage(src,lx,ly,lw,lh);
       resolve();
     };
@@ -179,7 +198,6 @@ async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
     img.src=logoData;
   });
 }
-
 function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
   ctx.textAlign='center';
@@ -197,7 +215,7 @@ async function pdfToPptx(file,logo){
   const ratio=base.height/base.width, slideW=10, slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
   const pptx=new PptxGenJS();pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});pptx.layout='CBPDF';
   pptx.author='承邦有限公司';pptx.subject='PDF 轉 PPTX';pptx.title='承邦 PDF 轉 PPTX';
-  const meta=getProjectMeta(file.name),converter=getTC(),logoData=logo?await fileToDataURL(logo):null;
+  const converter=getTC(); const meta=getProjectMeta(file.name); meta.title=converter(meta.title||'紅外線BGA返修設備').replace(/红外线/g,'紅外線').replace(/返修/g,'返修').replace(/设备/g,'設備'); const logoData=logo?await fileToDataURL(logo):null;
   for(let i=1;i<=pdf.numPages;i++){
     setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換＋頁首／頁尾套版，全部在手機本機處理');
     const page=i===1?first:await pdf.getPage(i), vp=page.getViewport({scale:1.5});
