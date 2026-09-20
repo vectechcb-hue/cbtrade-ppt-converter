@@ -144,6 +144,33 @@ async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
   ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
 }
+function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
+  if(!logoData)return;
+
+  // QUICK 標誌固定位於原簡報各內容頁右上角。
+  // 原頁面背景為白色，因此先以純白完整清除原 QUICK 圖樣，
+  // 再放入使用者上傳的 Logo；不採半透明覆蓋，避免留下原 Logo 邊緣或陰影。
+  const x=w*.825, y=h*.025, rw=w*.165, rh=h*.105;
+  ctx.save();
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(x,y,rw,rh);
+  ctx.restore();
+
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const maxW=rw*.92, maxH=rh*.78;
+      const ratio=Math.min(maxW/img.naturalWidth,maxH/img.naturalHeight);
+      const lw=img.naturalWidth*ratio, lh=img.naturalHeight*ratio;
+      const lx=x+(rw-lw)/2, ly=y+(rh-lh)/2;
+      ctx.drawImage(img,lx,ly,lw,lh);
+      resolve();
+    };
+    img.onerror=reject;
+    img.src=logoData;
+  });
+}
+
 function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
   ctx.textAlign='center';
@@ -176,7 +203,12 @@ async function pdfToPptx(file,logo){
       const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
       const img=foot.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
     }else{
-      const img=canvas.toDataURL('image/jpeg',.88);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+      // 所有內容頁：清除 QUICK Logo，再放入使用者上傳的 Logo。
+      await eraseQuickLogoAndPlaceUserLogo(ctx,canvas.width,canvas.height,logoData);
+      const img=canvas.toDataURL('image/jpeg',.88);
+      const slide=pptx.addSlide();
+      slide.background={color:'FFFFFF'};
+      slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
     }
     canvas.width=1;canvas.height=1;
   }
