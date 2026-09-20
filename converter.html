@@ -302,6 +302,8 @@ $('form').addEventListener('submit',async e=>{
      blob=await cleanPptx(file);
      name=makeOutputName(file.name);
    }else throw new Error('只支援 PPTX 或 PDF');
+   // 最後一道保險：輸出前再次正規化檔名，絕不允許「承邦轉檔」前綴流出。
+   name=makeOutputName(name);
    hide('status');
    const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
