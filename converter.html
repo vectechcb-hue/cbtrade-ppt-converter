@@ -24,39 +24,91 @@
 <div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
 <div class="foot">V2.0｜承邦有限公司</div>
 </main></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
 <script>
-const API='https://cbtrade-ppt-converter-api.onrender.com/convert';
 const $=id=>document.getElementById(id);
 function show(id,text){$(id).textContent=text;$(id).style.display='block'}
 function hide(id){$(id).style.display='none'}
-function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);show('ok','✅ 轉檔完成，檔案已下載。')}
+function setStatus(text,sub=''){ $('status').innerHTML='<div class="spin"></div><div>'+text+'</div><small>'+sub+'</small>'; $('status').style.display='block' }
+function fileToDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);show('ok','✅ 轉檔完成，檔案已下載。')}
+function cleanXml(text){return text.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g,'')}
+async function cleanPptx(file){
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const out=new JSZip();
+  const names=Object.keys(zip.files);
+  for(const name of names){
+    const entry=zip.files[name];
+    if(entry.dir){out.folder(name);continue}
+    let data=await entry.async('uint8array');
+    if(name.endsWith('.xml')||name.endsWith('.rels')){
+      try{data=new TextEncoder().encode(cleanXml(new TextDecoder().decode(data)))}catch(_){}
+    }
+    out.file(name,data);
+  }
+  return out.generateAsync({type:'blob',compression:'DEFLATE'});
+}
+async function pdfToPptx(file,logo){
+  const data=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  if(!pdf.numPages)throw new Error('PDF 沒有可轉換的頁面');
+  const first=await pdf.getPage(1);
+  const base=first.getViewport({scale:1});
+  const ratio=base.height/base.width;
+  const slideW=10;
+  const slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
+  const pptx=new pptxgen();
+  pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});
+  pptx.layout='CBPDF';
+  pptx.author='承邦有限公司';
+  pptx.subject='PDF 轉 PPTX';
+  pptx.title='承邦 PDF 轉 PPTX';
+  const logoData=logo?await fileToDataURL(logo):null;
+  for(let i=1;i<=pdf.numPages;i++){
+    setStatus('正在轉換 PDF 第 '+i+' / '+pdf.numPages+' 頁','請保持 App 開啟；檔案會在手機本機處理');
+    const page=i===1?first:await pdf.getPage(i);
+    const vp=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
+    const ctx=canvas.getContext('2d',{alpha:false});
+    await page.render({canvasContext:ctx,viewport:vp}).promise;
+    const img=canvas.toDataURL('image/jpeg',0.86);
+    const slide=pptx.addSlide();
+    slide.background={color:'FFFFFF'};
+    slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    if(logoData)slide.addImage({data:logoData,x:slideW-1.45,y:0.15,w:1.2,h:0.45});
+    canvas.width=1;canvas.height=1;
+  }
+  return pptx.write({outputType:'blob'});
+}
 $('form').addEventListener('submit',async e=>{
  e.preventDefault();
- const file=$('file').files[0],logo=$('logo').files[0]; if(!file)return;
- $('submit').disabled=true;hide('ok');hide('err');$('status').style.display='block';
- const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),300000);
- let lastErr=null;
+ const file=$('file').files[0],logo=$('logo').files[0];if(!file)return;
+ $('submit').disabled=true;hide('ok');hide('err');$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
  try{
-  {
-   try{
-    const fd=new FormData();fd.append('file',file);if(logo)fd.append('logo',logo);
-    const res=await fetch(API,{method:'POST',body:fd,signal:controller.signal});
-    if(!res.ok){let detail='HTTP '+res.status;try{const j=await res.json();if(j.error)detail=j.error}catch(_){ }throw new Error(detail)}
-    const blob=await res.blob();if(!blob.size)throw new Error('伺服器回傳空檔案');
-    const name='承邦轉檔_'+file.name;
-    const out=new File([blob],name,{type:blob.type||'application/octet-stream'});
-    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
-      try{await navigator.share({files:[out],title:name});show('ok','✅ 轉檔完成，已開啟分享／儲存選單。')}
-      catch(x){if(x.name==='AbortError'){show('ok','✅ 轉檔完成。你可重新按一次分享或使用下載。')}else download(blob,name)}
-    }else download(blob,name);
-    return;
-   }catch(x){lastErr=x}
-  }
-  throw lastErr||new Error('無法連線到新的 Render 轉檔後端');
+   const ext=file.name.toLowerCase().split('.').pop();
+   let blob,name;
+   if(ext==='pdf'){
+     blob=await pdfToPptx(file,logo);
+     name='承邦轉檔_'+file.name.replace(/\\.pdf$/i,'.pptx');
+   }else if(ext==='pptx'){
+     setStatus('正在清洗 PPTX XML','檔案會在手機本機處理，不需等待伺服器');
+     blob=await cleanPptx(file);
+     name='承邦轉檔_'+file.name;
+   }else throw new Error('只支援 PPTX 或 PDF');
+   hide('status');
+   const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
+     try{await navigator.share({files:[out],title:name});show('ok','✅ 轉檔完成，已開啟分享／儲存選單。')}
+     catch(x){if(x.name==='AbortError')show('ok','✅ 轉檔完成。檔案已準備好，可重新操作分享／儲存。');else download(blob,name)}
+   }else download(blob,name);
  }catch(x){
-  show('err',x.name==='AbortError'?'❌ 新後端超過 5 分鐘沒有回應，請檢查 Render 服務。':'❌ 新後端錯誤：'+x.message);
- }finally{clearTimeout(timer);$('status').style.display='none';$('submit').disabled=false}
+   hide('status');show('err','❌ 轉檔失敗：'+(x&&x.message?x.message:'未知錯誤'));
+ }finally{$('submit').disabled=false}
 });
-async function checkBackend(){try{const r=await fetch('https://cbtrade-ppt-converter-api.onrender.com/health',{cache:'no-store'});if(r.ok){$('backend').textContent='🟢 轉檔服務已連線';$('backend').style.color='#15803d'}else throw new Error('HTTP '+r.status)}catch(e){$('backend').textContent='🔴 新轉檔後端尚未正常連線';$('backend').style.color='#b91c1c'}}checkBackend();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=3').catch(()=>{});
+$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=4').catch(()=>{});
 </script>
 </body></html>
