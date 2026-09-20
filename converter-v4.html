@@ -81,7 +81,15 @@ function getProjectMeta(name){
   return {id,date:date.replace(/-/g,'.'),version,title};
 }
 function getTC(){
-  try{return OpenCC.Converter({from:'cn',to:'tw'})}catch(_){return s=>s}
+  try{return OpenCC.Converter({from:'cn',to:'tw'})}catch(_){
+    return s=>String(s).replace(/[红线设备转档]/g,m=>({'红':'紅','线':'線','设':'設','备':'備','转':'轉','档':'檔'}[m]||m));
+  }
+}
+function makeOutputName(originalName){
+  let base=String(originalName||'未命名').replace(/\\.(pdf|pptx)$/i,'');
+  base=base.replace(/^(承邦轉檔[_\\-]?)+/,'');
+  base=getTC()(base);
+  return base+'.pptx';
 }
 function fitFont(ctx,text,maxWidth,start){
   let size=start;
@@ -290,8 +298,10 @@ $('form').addEventListener('submit',async e=>{
    }else if(ext==='pptx'){
      setStatus('正在清洗 PPTX XML','檔案會在手機本機處理，不需等待伺服器');
      blob=await cleanPptx(file);
-     name='承邦轉檔_'+file.name;
+     name=makeOutputName(file.name);
    }else throw new Error('只支援 PPTX 或 PDF');
+   // 最後一道保險：無論前面哪個轉檔流程產生什麼名稱，輸出前一律重新正規化檔名。
+   name=makeOutputName(name);
    hide('status');
    const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
