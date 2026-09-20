@@ -18,17 +18,14 @@
 <form id="form">
 <div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF。</div></div>
 <div class="section"><label class="label">② Logo（選填）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">可附加 PNG／JPG Logo。</div></div>
-<button id="submit" type="submit">🚀 開始一鍵轉檔</button>
+<button id="submit" type="submit">🚀 開始一鍵轉檔</button><div id="backend" style="text-align:center;font-size:12px;color:#64748b;margin-top:10px">正在確認轉檔服務…</div>
 </form>
 <div id="status" class="status"><div class="spin"></div><div>正在處理檔案…</div><small>請保持 App 開啟</small></div>
 <div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
 <div class="foot">V2.0｜承邦有限公司</div>
 </main></div>
 <script>
-const APIS=[
- 'https://cbtrade-ppt-converter-api.onrender.com/convert',
- 'https://my-pptx-bot-lw8t.onrender.com/convert'
-];
+const API='https://cbtrade-ppt-converter-api.onrender.com/convert';
 const $=id=>document.getElementById(id);
 function show(id,text){$(id).textContent=text;$(id).style.display='block'}
 function hide(id){$(id).style.display='none'}
@@ -40,11 +37,11 @@ $('form').addEventListener('submit',async e=>{
  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),300000);
  let lastErr=null;
  try{
-  for(const api of APIS){
+  {
    try{
     const fd=new FormData();fd.append('file',file);if(logo)fd.append('logo',logo);
-    const res=await fetch(api,{method:'POST',body:fd,signal:controller.signal});
-    if(!res.ok){let detail='HTTP '+res.status;try{const j=await res.json();if(j.error)detail=j.error}catch(_){ }lastErr=new Error(detail);continue}
+    const res=await fetch(API,{method:'POST',body:fd,signal:controller.signal});
+    if(!res.ok){let detail='HTTP '+res.status;try{const j=await res.json();if(j.error)detail=j.error}catch(_){ }throw new Error(detail)}
     const blob=await res.blob();if(!blob.size)throw new Error('伺服器回傳空檔案');
     const name='承邦轉檔_'+file.name;
     const out=new File([blob],name,{type:blob.type||'application/octet-stream'});
@@ -55,11 +52,11 @@ $('form').addEventListener('submit',async e=>{
     return;
    }catch(x){lastErr=x}
   }
-  throw lastErr||new Error('無法連線到轉檔伺服器');
+  throw lastErr||new Error('無法連線到新的 Render 轉檔後端');
  }catch(x){
-  show('err',x.name==='AbortError'?'❌ 轉檔超過 5 分鐘沒有回應，請稍後再試。':'❌ '+x.message);
+  show('err',x.name==='AbortError'?'❌ 新後端超過 5 分鐘沒有回應，請檢查 Render 服務。':'❌ 新後端錯誤：'+x.message);
  }finally{clearTimeout(timer);$('status').style.display='none';$('submit').disabled=false}
 });
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=3').catch(()=>{});
+async function checkBackend(){try{const r=await fetch('https://cbtrade-ppt-converter-api.onrender.com/health',{cache:'no-store'});if(r.ok){$('backend').textContent='🟢 轉檔服務已連線';$('backend').style.color='#15803d'}else throw new Error('HTTP '+r.status)}catch(e){$('backend').textContent='🔴 新轉檔後端尚未正常連線';$('backend').style.color='#b91c1c'}}checkBackend();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=3').catch(()=>{});
 </script>
 </body></html>
