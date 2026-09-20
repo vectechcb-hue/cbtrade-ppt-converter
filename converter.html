@@ -1,1 +1,65 @@
-<!doctype html><html lang="zh-TW"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#2563eb"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="承邦轉檔"><link rel="manifest" href="./manifest.webmanifest"><title>承邦有限公司｜一鍵轉檔</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#eff6ff,#f8fafc);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#172033;display:flex;justify-content:center;padding:20px}.wrap{width:100%;max-width:520px;margin:auto}.card{background:#fff;border-radius:24px;padding:22px;box-shadow:0 12px 40px #0f172a14;border:1px solid #e2e8f0}.brand{text-align:center}.brand h1{font-size:29px;margin:0;color:#173b75;font-weight:900}.brand p{font-size:14px;color:#64748b;margin:7px 0 22px}.section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:17px;padding:15px;margin:12px 0}.label{font-size:14px;font-weight:800;margin-bottom:8px;display:block}input[type=file]{width:100%;font-size:14px;color:#475569}input[type=file]::file-selector-button{border:0;background:#dbeafe;color:#1d4ed8;border-radius:999px;padding:10px 14px;font-weight:800;margin-right:8px}button{width:100%;border:0;border-radius:15px;padding:15px;font-size:18px;font-weight:900;color:white;background:#2563eb;box-shadow:0 5px 12px #2563eb30}button:disabled{opacity:.55}.hint{font-size:12px;color:#64748b;line-height:1.6;margin-top:8px}.status{display:none;text-align:center;margin-top:15px;background:#eff6ff;border-radius:16px;padding:16px;color:#1d4ed8;font-weight:800}.spin{width:42px;height:42px;border:4px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 10px}@keyframes spin{to{transform:rotate(360deg)}}.err,.ok{display:none;margin-top:12px;padding:12px;border-radius:14px;font-size:14px;font-weight:800}.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}</style></head><body><div class="wrap"><div class="card"><div class="brand"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V1.2</p></div><form id="form"><div class="section"><label class="label">1．選擇要轉換的簡報</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF。</div></div><div class="section"><label class="label">2．選擇去背 Logo（選填）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">可附加 PNG／JPG Logo。</div></div><button id="submit" type="submit">🚀 開始一鍵轉檔</button></form><div id="status" class="status"><div class="spin"></div>正在進行 XML 底層清洗與轉換…<br><span style="font-size:12px;color:#64748b">請保持 App 開啟</span></div><div id="ok" class="ok"></div><div id="err" class="err"></div></div></div><script>const APIS=['https://cbtrade-ppt-converter-api.onrender.com/convert','https://my-pptx-bot-lw8t.onrender.com/convert'],$=id=>document.getElementById(id);$('form').addEventListener('submit',async e=>{e.preventDefault();const file=$('file').files[0],logo=$('logo').files[0];if(!file)return;$('submit').disabled=true;$('status').style.display='block';$('err').style.display='none';$('ok').style.display='none';const fd=new FormData();fd.append('file',file);if(logo)fd.append('logo',logo);try{const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),300000);let res=null,lastErr=null;for(const api of APIS){try{res=await fetch(api,{method:'POST',body:fd,signal:controller.signal});if(res.ok)break;lastErr=new Error('伺服器回傳 '+res.status)}catch(x){lastErr=x}}clearTimeout(timeout);if(!res)throw lastErr||new Error('無法連線');if(!res.ok){let msg='伺服器回傳錯誤';try{const j=await res.json();msg=j.error||msg}catch(_){const t=await res.text();if(t)msg=t}throw new Error(msg)}const blob=await res.blob();if(!blob.size)throw new Error('伺服器回傳空檔案');const name='承邦轉檔_'+file.name,out=new File([blob],name,{type:blob.type||'application/octet-stream'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){try{await navigator.share({files:[out],title:name});showOk('✅ 轉檔完成，已開啟手機分享／儲存選單。')}catch(se){if(se.name!=='AbortError')download(blob,name)}}else download(blob,name)}catch(err){if(err.name==='AbortError')showErr('錯誤：轉檔超過 5 分鐘沒有回應，後端可能發生錯誤或卡住，請稍後重試。');else showErr('錯誤：'+err.message)}finally{$('status').style.display='none';$('submit').disabled=false}});function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);showOk('✅ 轉檔完成，檔案已下載。')}function showOk(t){$('ok').textContent=t;$('ok').style.display='block'}function showErr(t){$('err').textContent=t;$('err').style.display='block'}if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});</script></body></html>
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f97316">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="承邦轉檔">
+<link rel="manifest" href="./manifest.webmanifest?v=3">
+<title>承邦有限公司｜一鍵轉檔 V2.0</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#fff7ed 0%,#f8fafc 48%,#fff 100%);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#172033;padding:18px}.wrap{width:100%;max-width:560px;margin:0 auto}.card{background:#fff;border-radius:28px;padding:22px;border:1px solid #fed7aa;box-shadow:0 16px 50px #9a34121a}.head{text-align:center;padding:4px 0 18px}.head h1{margin:0;color:#c2410c;font-size:28px;font-weight:900}.head p{margin:7px 0 0;color:#64748b;font-size:14px}.section{background:#fffaf5;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin:12px 0}.label{display:block;font-size:14px;font-weight:900;margin-bottom:9px;color:#334155}input[type=file]{width:100%;font-size:14px}input[type=file]::file-selector-button{border:0;background:#ffedd5;color:#c2410c;border-radius:12px;padding:10px 13px;font-weight:900;margin-right:8px}.hint{font-size:12px;color:#64748b;line-height:1.6;margin-top:8px}button{width:100%;border:0;border-radius:17px;padding:16px;font-size:18px;font-weight:900;color:#fff;background:#f97316;box-shadow:0 8px 18px #f9731633}button:disabled{opacity:.55}.status,.msg{display:none;margin-top:14px;padding:15px;border-radius:16px;text-align:center;font-weight:800}.status{background:#fff7ed;color:#c2410c}.msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}.msg.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}.spin{width:40px;height:40px;border:4px solid #fed7aa;border-top-color:#f97316;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 10px}@keyframes s{to{transform:rotate(360deg)}}.foot{text-align:center;color:#94a3b8;font-size:11px;margin-top:16px}
+</style>
+</head>
+<body><div class="wrap"><main class="card">
+<div class="head"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V2.0</p></div>
+<form id="form">
+<div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF。</div></div>
+<div class="section"><label class="label">② Logo（選填）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">可附加 PNG／JPG Logo。</div></div>
+<button id="submit" type="submit">🚀 開始一鍵轉檔</button>
+</form>
+<div id="status" class="status"><div class="spin"></div><div>正在處理檔案…</div><small>請保持 App 開啟</small></div>
+<div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
+<div class="foot">V2.0｜承邦有限公司</div>
+</main></div>
+<script>
+const APIS=[
+ 'https://cbtrade-ppt-converter-api.onrender.com/convert',
+ 'https://my-pptx-bot-lw8t.onrender.com/convert'
+];
+const $=id=>document.getElementById(id);
+function show(id,text){$(id).textContent=text;$(id).style.display='block'}
+function hide(id){$(id).style.display='none'}
+function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);show('ok','✅ 轉檔完成，檔案已下載。')}
+$('form').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const file=$('file').files[0],logo=$('logo').files[0]; if(!file)return;
+ $('submit').disabled=true;hide('ok');hide('err');$('status').style.display='block';
+ const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),300000);
+ let lastErr=null;
+ try{
+  for(const api of APIS){
+   try{
+    const fd=new FormData();fd.append('file',file);if(logo)fd.append('logo',logo);
+    const res=await fetch(api,{method:'POST',body:fd,signal:controller.signal});
+    if(!res.ok){let detail='HTTP '+res.status;try{const j=await res.json();if(j.error)detail=j.error}catch(_){ }lastErr=new Error(detail);continue}
+    const blob=await res.blob();if(!blob.size)throw new Error('伺服器回傳空檔案');
+    const name='承邦轉檔_'+file.name;
+    const out=new File([blob],name,{type:blob.type||'application/octet-stream'});
+    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
+      try{await navigator.share({files:[out],title:name});show('ok','✅ 轉檔完成，已開啟分享／儲存選單。')}
+      catch(x){if(x.name==='AbortError'){show('ok','✅ 轉檔完成。你可重新按一次分享或使用下載。')}else download(blob,name)}
+    }else download(blob,name);
+    return;
+   }catch(x){lastErr=x}
+  }
+  throw lastErr||new Error('無法連線到轉檔伺服器');
+ }catch(x){
+  show('err',x.name==='AbortError'?'❌ 轉檔超過 5 分鐘沒有回應，請稍後再試。':'❌ '+x.message);
+ }finally{clearTimeout(timer);$('status').style.display='none';$('submit').disabled=false}
+});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=3').catch(()=>{});
+</script>
+</body></html>
