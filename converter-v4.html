@@ -34,7 +34,7 @@ function hide(id){$(id).style.display='none'}
 function setStatus(text,sub=''){ $('status').innerHTML='<div class="spin"></div><div>'+text+'</div><small>'+sub+'</small>'; $('status').style.display='block' }
 function fileToDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
 function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);show('ok','✅ 轉檔完成，檔案已下載。')}
-function cleanXml(text){return text.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g,'')}
+function cleanXml(text){return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')}
 async function cleanPptx(file){
   const zip=await JSZip.loadAsync(await file.arrayBuffer());
   const out=new JSZip();
@@ -92,7 +92,7 @@ $('form').addEventListener('submit',async e=>{
    let blob,name;
    if(ext==='pdf'){
      blob=await pdfToPptx(file,logo);
-     name='承邦轉檔_'+file.name.replace(/\\.pdf$/i,'.pptx');
+     name='承邦轉檔_'+file.name.replace(/\.pdf$/i,'.pptx');
    }else if(ext==='pptx'){
      setStatus('正在清洗 PPTX XML','檔案會在手機本機處理，不需等待伺服器');
      blob=await cleanPptx(file);
