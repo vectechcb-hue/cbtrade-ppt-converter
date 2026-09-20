@@ -104,12 +104,11 @@ async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
 
   if(logoData){
-    const im=await new Promise((resolve,reject)=>{
-      const img=new Image();img.onload=()=>resolve(img);img.onerror=reject;img.src=logoData;
-    });
-    const maxW=w*.24,maxH=h*.11,ratio=Math.min(maxW/im.naturalWidth,maxH/im.naturalHeight);
-    const lw=im.naturalWidth*ratio,lh=im.naturalHeight*ratio;
-    ctx.drawImage(im,w*.055,h*.03,lw,lh);
+    const logoCanvas=await prepareUserLogo(logoData);
+    const maxW=w*.29,maxH=h*.13;
+    const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+    const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+    ctx.drawImage(logoCanvas,w*.045,h*.025,lw,lh);
   }
 
   const title=meta.title||'紅外線BGA返修設備';
@@ -141,63 +140,77 @@ async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
   ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
 }
-async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
-  if(!logoData)return;
-
-  // 清除 QUICK Logo 及其淡灰底圖，範圍加大，確保原 Logo 完全消失。
-  const x=w*.785, y=0, rw=w*.215, rh=h*.155;
-  ctx.save();
-  ctx.fillStyle='#FFFFFF';
-  ctx.fillRect(x,y,rw,rh);
-  ctx.restore();
-
+async function prepareUserLogo(logoData){
   return new Promise((resolve,reject)=>{
     const img=new Image();
     img.onload=()=>{
       const src=document.createElement('canvas');
-      src.width=img.naturalWidth;
-      src.height=img.naturalHeight;
+      src.width=img.naturalWidth; src.height=img.naturalHeight;
       const sctx=src.getContext('2d',{willReadFrequently:true});
       sctx.drawImage(img,0,0);
-
-      // 強化去背：移除白色、淺灰色與低飽和度的淺色背景。
-      // 保留橘色／藍色 Logo 與深色文字。
       const imageData=sctx.getImageData(0,0,src.width,src.height);
       const d=imageData.data;
-      for(let p=0;p<d.length;p+=4){
-        const r=d[p],g=d[p+1],b=d[p+2];
-        const max=Math.max(r,g,b),min=Math.min(r,g,b);
-        const brightness=max/255;
-        const saturation=max===0?0:(max-min)/max;
+      let minX=src.width,minY=src.height,maxX=-1,maxY=-1;
 
-        // 純白與近白背景
-        if(brightness>0.86 && saturation<0.38){
-          d[p+3]=0;
-          continue;
-        }
+      for(let y=0;y<src.height;y++){
+        for(let x=0;x<src.width;x++){
+          const p=(y*src.width+x)*4;
+          const r=d[p],g=d[p+1],b=d[p+2];
+          const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+          const sat=mx===0?0:(mx-mn)/mx;
+          const lum=(r+g+b)/3;
 
-        // 淺灰／淡米色背景與掃描紙張底色
-        if(brightness>0.70 && saturation<0.20){
-          d[p+3]=0;
+          // Logo 檔是 JPG 時，背景通常包含白、淡灰、灰白紋理。
+          // 將「亮色低飽和」以及「中亮度低飽和灰階」全部透明化。
+          let alpha=255;
+          if((lum>180 && sat<0.42) || (lum>145 && sat<0.18)){
+            alpha=0;
+          }
+          // 再清除接近白色的任何殘留。
+          if(r>225 && g>225 && b>225) alpha=0;
+          d[p+3]=alpha;
+
+          if(alpha>18){
+            if(x<minX)minX=x;if(x>maxX)maxX=x;
+            if(y<minY)minY=y;if(y>maxY)maxY=y;
+          }
         }
       }
       sctx.putImageData(imageData,0,0);
 
-      // 大幅放大使用者 Logo，覆蓋原 QUICK Logo 位置。
-      const maxW=rw*.98;
-      const maxH=rh*.92;
-      const ratio=Math.min(maxW/src.width,maxH/src.height);
-      const lw=src.width*ratio;
-      const lh=src.height*ratio;
-      const lx=x+(rw-lw)/2;
-      const ly=y+(rh-lh)/2;
-      ctx.drawImage(src,lx,ly,lw,lh);
-      resolve();
+      // 只保留去背後真正的 Logo 範圍，避免原 JPG 的白色畫布再次被放大。
+      if(maxX<minX || maxY<minY){ resolve(src); return; }
+      const pad=Math.max(2,Math.round(Math.min(src.width,src.height)*.01));
+      minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad);
+      maxX=Math.min(src.width-1,maxX+pad); maxY=Math.min(src.height-1,maxY+pad);
+      const out=document.createElement('canvas');
+      out.width=maxX-minX+1; out.height=maxY-minY+1;
+      out.getContext('2d').drawImage(src,minX,minY,out.width,out.height,0,0,out.width,out.height);
+      resolve(out);
     };
     img.onerror=reject;
     img.src=logoData;
   });
 }
+
+async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
+  // 完整清除 QUICK Logo 區域，再放入已強力去背且裁切後的使用者 Logo。
+  const x=w*.775, y=0, rw=w*.225, rh=h*.17;
+  ctx.save();
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(x,y,rw,rh);
+  ctx.restore();
+
+  if(!logoData)return;
+  const logoCanvas=await prepareUserLogo(logoData);
+  const maxW=rw*.99,maxH=rh*.92;
+  const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+  const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+  const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+  ctx.drawImage(logoCanvas,lx,ly,lw,lh);
+}
+
+
 function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
   ctx.textAlign='center';
@@ -205,7 +218,9 @@ function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.058)+'px Arial,sans-serif';ctx.fillText('Thanks',w*.50,h*.49);
   ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.027)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.50,h*.78);
   ctx.font='500 '+Math.round(w*.020)+'px Arial,sans-serif';ctx.fillText('http://www.cbtrade.com.tw',w*.50,h*.84);
-  ctx.fillStyle='#666';ctx.font='400 '+Math.round(w*.014)+'px Arial,sans-serif';ctx.fillText('2022/7/12',w*.50,h*.91);
+  ctx.fillStyle='#FFFFFF';ctx.fillRect(w*.35,h*.875,w*.30,h*.08);
+  // 清除原頁尾日期：承邦版本頁尾不保留 QUICK 原日期。
+
 }
 async function pdfToPptx(file,logo){
   const data=await file.arrayBuffer();
@@ -230,8 +245,15 @@ async function pdfToPptx(file,logo){
       const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
       const img=foot.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
     }else{
-      // 所有內容頁：清除 QUICK Logo，再放入使用者上傳的 Logo。
-      await eraseQuickLogoAndPlaceUserLogo(ctx,canvas.width,canvas.height,logoData);
+      // 所有內容頁：清除右下角 QUICK 網址／電話與左下角 QUICK 標誌文字，
+      // 再清除右上角 QUICK Logo，最後放入使用者 Logo。
+      const fw=canvas.width, fh=canvas.height;
+      ctx.save();
+      ctx.fillStyle='#FFFFFF';
+      ctx.fillRect(fw*.76,fh*.935,fw*.24,fh*.065);
+      ctx.fillRect(0,fh*.935,fw*.24,fh*.065);
+      ctx.restore();
+      await eraseQuickLogoAndPlaceUserLogo(ctx,fw,fh,logoData);
       const img=canvas.toDataURL('image/jpeg',.88);
       const slide=pptx.addSlide();
       slide.background={color:'FFFFFF'};
