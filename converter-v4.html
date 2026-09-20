@@ -27,6 +27,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 function show(id,text){$(id).textContent=text;$(id).style.display='block'}
@@ -50,35 +51,93 @@ async function cleanPptx(file){
   }
   return out.generateAsync({type:'blob',compression:'DEFLATE'});
 }
+function getProjectMeta(name){
+  const base=name.replace(/\\.(pdf|pptx)$/i,'');
+  const id=(base.match(/TWXBCB[0-9]+(?:-[0-9]{8})?/i)||[])[0]||'';
+  const date=(base.match(/20\\d{2}[-.]?\\d{2}[-.]?\\d{2}/)||[])[0]||'';
+  const version=(base.match(/V\\d+(?:\\.\\d+)?/i)||[])[0]||'VER1.0';
+  return {id,date:date.replace(/-/g,'.'),version};
+}
+function getTC(){
+  try{return OpenCC.Converter({from:'cn',to:'tw'})}catch(_){return s=>s}
+}
+function fitFont(ctx,text,maxWidth,start){
+  let size=start;
+  while(size>12){ctx.font='700 '+size+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';if(ctx.measureText(text).width<=maxWidth)return size;size-=1}
+  return size;
+}
+async function translatePdfPage(pdf,page,canvas,ctx,scale,converter){
+  const text=await page.getTextContent();
+  for(const item of text.items||[]){
+    if(!item.str||!item.str.trim())continue;
+    const translated=converter(item.str);
+    if(translated===item.str)continue;
+    const tx=item.transform;
+    const x=tx[4]*scale;
+    const y=canvas.height-(tx[5]*scale);
+    const h=Math.max(14,Math.abs(tx[3]||tx[0]||12)*scale);
+    const w=Math.max(20,(item.width||20)*scale);
+    ctx.fillStyle='rgba(255,255,255,.96)';
+    ctx.fillRect(x-2,y-h-3,w+5,h+7);
+    const fs=Math.max(12,Math.min(42,h*.9));
+    ctx.font='500 '+fs+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';
+    ctx.fillStyle='#222';
+    ctx.textBaseline='alphabetic';
+    ctx.fillText(translated,x,y);
+  }
+}
+function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+  // Brand
+  ctx.fillStyle='#25245f';ctx.font='900 '+Math.round(w*.045)+'px Arial,sans-serif';ctx.fillText('VECTECH',w*.055,h*.095);
+  ctx.font='700 '+Math.round(w*.018)+'px Arial,sans-serif';ctx.fillText('www.cbtrade.com.tw',w*.14,h*.055);
+  ctx.fillStyle='#4b5563';ctx.font='500 '+Math.round(w*.026)+'px "Noto Sans TC",sans-serif';
+  ctx.textAlign='center';ctx.fillText('紅外線BGA返修設備',w*.50,h*.225);
+  ctx.textAlign='left';ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.022)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('項目編號：',w*.25,h*.39);ctx.fillText('版本代號：',w*.25,h*.49);ctx.fillText('發佈日期：',w*.25,h*.59);
+  ctx.strokeStyle='#9aa9bf';ctx.lineWidth=2;
+  for(const yy of [.405,.505,.605]){ctx.beginPath();ctx.moveTo(w*.35,h*yy);ctx.lineTo(w*.70,h*yy);ctx.stroke()}
+  ctx.fillStyle='#4b5563';ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.id,w*.43,h*.39);ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText(meta.version,w*.48,h*.49);ctx.fillText(meta.date,w*.48,h*.59);
+  if(machineCanvas)ctx.drawImage(machineCanvas,w*.035,h*.66,w*.28,h*.28);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.43,h*.78);
+  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
+  if(logoData){const im=new Image();im.onload=()=>ctx.drawImage(im,w*.75,h*.04,w*.18,h*.07);im.src=logoData}
+}
+function drawFooterTemplate(ctx,w,h){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+  ctx.textAlign='center';
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.075)+'px Arial,sans-serif';ctx.fillText('THE END',w*.50,h*.39);
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.058)+'px Arial,sans-serif';ctx.fillText('Thanks',w*.50,h*.49);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.027)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.50,h*.78);
+  ctx.font='500 '+Math.round(w*.020)+'px Arial,sans-serif';ctx.fillText('http://www.cbtrade.com.tw',w*.50,h*.84);
+  ctx.fillStyle='#666';ctx.font='400 '+Math.round(w*.014)+'px Arial,sans-serif';ctx.fillText(new Date().toISOString().slice(0,10).replace(/-/g,'/'),w*.50,h*.91);
+}
 async function pdfToPptx(file,logo){
   const data=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data}).promise;
   if(!pdf.numPages)throw new Error('PDF 沒有可轉換的頁面');
-  const first=await pdf.getPage(1);
-  const base=first.getViewport({scale:1});
-  const ratio=base.height/base.width;
-  const slideW=10;
-  const slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
-  const pptx=new PptxGenJS();
-  pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});
-  pptx.layout='CBPDF';
-  pptx.author='承邦有限公司';
-  pptx.subject='PDF 轉 PPTX';
-  pptx.title='承邦 PDF 轉 PPTX';
-  const logoData=logo?await fileToDataURL(logo):null;
+  const first=await pdf.getPage(1), base=first.getViewport({scale:1});
+  const ratio=base.height/base.width, slideW=10, slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
+  const pptx=new PptxGenJS();pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});pptx.layout='CBPDF';
+  pptx.author='承邦有限公司';pptx.subject='PDF 轉 PPTX';pptx.title='承邦 PDF 轉 PPTX';
+  const meta=getProjectMeta(file.name),converter=getTC(),logoData=logo?await fileToDataURL(logo):null;
   for(let i=1;i<=pdf.numPages;i++){
-    setStatus('正在轉換 PDF 第 '+i+' / '+pdf.numPages+' 頁','請保持 App 開啟；檔案會在手機本機處理');
-    const page=i===1?first:await pdf.getPage(i);
-    const vp=page.getViewport({scale:1.5});
-    const canvas=document.createElement('canvas');
-    canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
-    const ctx=canvas.getContext('2d',{alpha:false});
-    await page.render({canvasContext:ctx,viewport:vp}).promise;
-    const img=canvas.toDataURL('image/jpeg',0.86);
-    const slide=pptx.addSlide();
-    slide.background={color:'FFFFFF'};
-    slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
-    if(logoData)slide.addImage({data:logoData,x:slideW-1.45,y:0.15,w:1.2,h:0.45});
+    setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換＋頁首／頁尾套版，全部在手機本機處理');
+    const page=i===1?first:await pdf.getPage(i), vp=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
+    const ctx=canvas.getContext('2d',{alpha:false});await page.render({canvasContext:ctx,viewport:vp}).promise;
+    if(i>1 && i<pdf.numPages) await translatePdfPage(pdf,page,canvas,ctx,1.5,converter);
+    if(i===1){
+      const machine=canvas;const cover=document.createElement('canvas');cover.width=canvas.width;cover.height=canvas.height;
+      const cctx=cover.getContext('2d',{alpha:false});drawHeaderTemplate(cctx,cover.width,cover.height,meta,machine,logoData); 
+      const img=cover.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else if(i===pdf.numPages){
+      const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
+      const img=foot.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else{
+      const img=canvas.toDataURL('image/jpeg',.88);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }
     canvas.width=1;canvas.height=1;
   }
   return pptx.write({outputType:'blob'});
