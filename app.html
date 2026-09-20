@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f97316">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="承邦轉檔">
+<link rel="manifest" href="./manifest.webmanifest?v=3">
+<title>承邦有限公司｜一鍵轉檔 V2.0</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#fff7ed 0%,#f8fafc 48%,#fff 100%);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#172033;padding:18px}.wrap{width:100%;max-width:560px;margin:0 auto}.card{background:#fff;border-radius:28px;padding:22px;border:1px solid #fed7aa;box-shadow:0 16px 50px #9a34121a}.head{text-align:center;padding:4px 0 18px}.head h1{margin:0;color:#c2410c;font-size:28px;font-weight:900}.head p{margin:7px 0 0;color:#64748b;font-size:14px}.section{background:#fffaf5;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin:12px 0}.label{display:block;font-size:14px;font-weight:900;margin-bottom:9px;color:#334155}input[type=file]{width:100%;font-size:14px}input[type=file]::file-selector-button{border:0;background:#ffedd5;color:#c2410c;border-radius:12px;padding:10px 13px;font-weight:900;margin-right:8px}.hint{font-size:12px;color:#64748b;line-height:1.6;margin-top:8px}button{width:100%;border:0;border-radius:17px;padding:16px;font-size:18px;font-weight:900;color:#fff;background:#f97316;box-shadow:0 8px 18px #f9731633}button:disabled{opacity:.55}.status,.msg{display:none;margin-top:14px;padding:15px;border-radius:16px;text-align:center;font-weight:800}.status{background:#fff7ed;color:#c2410c}.msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}.msg.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}.spin{width:40px;height:40px;border:4px solid #fed7aa;border-top-color:#f97316;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 10px}@keyframes s{to{transform:rotate(360deg)}}.foot{text-align:center;color:#94a3b8;font-size:11px;margin-top:16px}
+</style>
+</head>
+<body><div class="wrap"><main class="card">
+<div class="head"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V2.0</p></div>
+<form id="form">
+<div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF。</div></div>
+<div class="section"><label class="label">② Logo（選填）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">可附加 PNG／JPG Logo。</div></div>
+<button id="submit" type="submit">🚀 開始一鍵轉檔</button><div id="backend" style="text-align:center;font-size:12px;color:#64748b;margin-top:10px">正在確認轉檔服務…</div>
+</form>
+<div id="status" class="status"><div class="spin"></div><div>正在處理檔案…</div><small>請保持 App 開啟</small></div>
+<div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
+<div class="foot">V2.0｜承邦有限公司</div>
+</main></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="./vendor/pptxgen.min.js?v=1"></script>
+<script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+function show(id,text){$(id).textContent=text;$(id).style.display='block'}
+function hide(id){$(id).style.display='none'}
+function setStatus(text,sub=''){ $('status').innerHTML='<div class="spin"></div><div>'+text+'</div><small>'+sub+'</small>'; $('status').style.display='block' }
+function fileToDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+function download(blob,name){
+  // 唯一下載物件：PPTX Blob。程式不建立任何 TXT／文字檔。
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=u;a.download=name;a.type='application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),3000);
+  show('ok','✅ 轉檔完成，僅輸出 1 個 PPTX 檔案。');
+}
+function cleanXml(text){return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')}
+async function cleanPptx(file){
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const out=new JSZip();
+  const names=Object.keys(zip.files);
+  for(const name of names){
+    const entry=zip.files[name];
+    if(entry.dir){out.folder(name);continue}
+    let data=await entry.async('uint8array');
+    if(name.endsWith('.xml')||name.endsWith('.rels')){
+      try{data=new TextEncoder().encode(cleanXml(new TextDecoder().decode(data)))}catch(_){}
+    }
+    out.file(name,data);
+  }
+  return out.generateAsync({type:'blob',compression:'DEFLATE'});
+}
+function getProjectMeta(name){
+  const base=name.replace(/\.(pdf|pptx)$/i,'');
+  const idMatch=base.match(/TWXBCB\d+(?:-\d{8})?/i);
+  const id=idMatch?idMatch[0]:'';
+  const versionMatch=base.match(/V\d+(?:\.\d+)?/i);
+  const version=versionMatch?versionMatch[0]:'VER1.0';
+
+  let title='';
+  if(id){
+    const after=base.slice(id.length).replace(/^[-_]+/,'');
+    title=after.split(/20\d{2}[-.]?\d{2}[-.]?\d{2}/)[0].replace(/[-_]+$/,'').trim();
+  }
+  if(!title){
+    const chinese=base.match(/[\u3400-\u9fff]{2,}/);
+    title=chinese?chinese[0]:'紅外線BGA返修設備';
+  }
+
+  const dates=[...base.matchAll(/20\d{2}[-.]?\d{2}[-.]?\d{2}/g)].map(m=>m[0]);
+  const date=dates.length?dates[dates.length-1]:'';
+  return {id,date:date.replace(/-/g,'.'),version,title};
+}
+function getTC(){
+  try{return OpenCC.Converter({from:'cn',to:'tw'})}catch(_){
+    return s=>String(s).replace(/[红线设备转档]/g,m=>({'红':'紅','线':'線','设':'設','备':'備','转':'轉','档':'檔'}[m]||m));
+  }
+}
+function makeOutputName(originalName){
+  let base=String(originalName||'未命名');
+  base=base.replace(/\\.(pdf|pptx)$/i,'');
+  // 移除任何數量的「承邦轉檔」前綴（含底線、連字號或空白）。
+  base=base.replace(/^(?:承邦轉檔(?:[_\\-\\s]*)?)+/,'');
+  // 來源檔名的簡體中文一律轉成繁體中文。
+  base=getTC()(base);
+  // 再做一次固定字串清理，避免任何舊版本名稱混入。
+  base=base.replace(/承邦轉檔/g,'').replace(/^[_\\-\\s]+/,'');
+  return base+'.pptx';
+}
+function fitFont(ctx,text,maxWidth,start){
+  let size=start;
+  while(size>12){ctx.font='700 '+size+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';if(ctx.measureText(text).width<=maxWidth)return size;size-=1}
+  return size;
+}
+async function translatePdfPage(pdf,page,canvas,ctx,scale,converter){
+  const text=await page.getTextContent();
+  for(const item of text.items||[]){
+    if(!item.str||!item.str.trim())continue;
+    const translated=converter(item.str);
+    if(translated===item.str)continue;
+    const tx=item.transform;
+    const x=tx[4]*scale;
+    const y=canvas.height-(tx[5]*scale);
+    const h=Math.max(14,Math.abs(tx[3]||tx[0]||12)*scale);
+    const w=Math.max(20,(item.width||20)*scale);
+    ctx.fillStyle='rgba(255,255,255,.96)';
+    ctx.fillRect(x-2,y-h-3,w+5,h+7);
+    const fs=Math.max(12,Math.min(42,h*.9));
+    ctx.font='500 '+fs+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';
+    ctx.fillStyle='#222';
+    ctx.textBaseline='alphabetic';
+    ctx.fillText(translated,x,y);
+  }
+}
+async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+
+  if(logoData){
+    const logoCanvas=await prepareUserLogo(logoData);
+    const maxW=w*.29,maxH=h*.13;
+    const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+    const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+    ctx.drawImage(logoCanvas,w*.045,h*.025,lw,lh);
+  }
+
+  const title=meta.title||'紅外線BGA返修設備';
+  ctx.textAlign='center';
+  ctx.fillStyle='#4b5563';
+  ctx.font='500 '+Math.round(w*.026)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText(title,w*.50,h*.225);
+
+  ctx.textAlign='left';
+  ctx.fillStyle='#111';
+  ctx.font='500 '+Math.round(w*.022)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('項目編號：',w*.25,h*.39);
+  ctx.fillText('版本代號：',w*.25,h*.49);
+  ctx.fillText('發佈日期：',w*.25,h*.59);
+
+  ctx.strokeStyle='#9aa9bf';ctx.lineWidth=2;
+  for(const yy of [.405,.505,.605]){
+    ctx.beginPath();ctx.moveTo(w*.35,h*yy);ctx.lineTo(w*.70,h*yy);ctx.stroke();
+  }
+
+  ctx.fillStyle='#4b5563';ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.id||'',w*.43,h*.39);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.version||'VER1.0',w*.48,h*.49);
+  ctx.fillText(meta.date||'',w*.48,h*.59);
+
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('承邦有限公司',w*.43,h*.78);
+  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
+}
+async function prepareUserLogo(logoData){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const src=document.createElement('canvas');
+      src.width=img.naturalWidth; src.height=img.naturalHeight;
+      const sctx=src.getContext('2d',{willReadFrequently:true});
+      sctx.drawImage(img,0,0);
+      const imageData=sctx.getImageData(0,0,src.width,src.height);
+      const d=imageData.data;
+      let minX=src.width,minY=src.height,maxX=-1,maxY=-1;
+
+      for(let y=0;y<src.height;y++){
+        for(let x=0;x<src.width;x++){
+          const p=(y*src.width+x)*4;
+          const r=d[p],g=d[p+1],b=d[p+2];
+          const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+          const sat=mx===0?0:(mx-mn)/mx;
+          const lum=(r+g+b)/3;
+
+          // Logo 檔是 JPG 時，背景通常包含白、淡灰、灰白紋理。
+          // 將「亮色低飽和」以及「中亮度低飽和灰階」全部透明化。
+          let alpha=255;
+          if((lum>180 && sat<0.42) || (lum>145 && sat<0.18)){
+            alpha=0;
+          }
+          // 再清除接近白色的任何殘留。
+          if(r>225 && g>225 && b>225) alpha=0;
+          d[p+3]=alpha;
+
+          if(alpha>18){
+            if(x<minX)minX=x;if(x>maxX)maxX=x;
+            if(y<minY)minY=y;if(y>maxY)maxY=y;
+          }
+        }
+      }
+      sctx.putImageData(imageData,0,0);
+
+      // 只保留去背後真正的 Logo 範圍，避免原 JPG 的白色畫布再次被放大。
+      if(maxX<minX || maxY<minY){ resolve(src); return; }
+      const pad=Math.max(2,Math.round(Math.min(src.width,src.height)*.01));
+      minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad);
+      maxX=Math.min(src.width-1,maxX+pad); maxY=Math.min(src.height-1,maxY+pad);
+      const out=document.createElement('canvas');
+      out.width=maxX-minX+1; out.height=maxY-minY+1;
+      out.getContext('2d').drawImage(src,minX,minY,out.width,out.height,0,0,out.width,out.height);
+      resolve(out);
+    };
+    img.onerror=reject;
+    img.src=logoData;
+  });
+}
+
+async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
+  // QUICK 原 Logo 固定位於內容頁右上角。
+  // 先完整清空該區域，再放入使用者 Logo，確保不會殘留 QUICK 字樣。
+  // 清除範圍避開下方設備圖與標題內容。
+  const x=Math.floor(w*.805);
+  const y=0;
+  const rw=Math.floor(w*.195);
+  const rh=Math.floor(h*.155);
+  ctx.save();
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(x,y,rw,rh);
+  ctx.restore();
+
+  if(!logoData)return;
+  const logoCanvas=await prepareUserLogo(logoData);
+
+  // Logo 優先放大，但只能放在剛清空的右上安全區。
+  const maxW=rw*.92, maxH=rh*.78;
+  const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+  const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+  const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+  ctx.drawImage(logoCanvas,lx,ly,lw,lh);
+}
+
+function drawFooterTemplate(ctx,w,h){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+  ctx.textAlign='center';
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.075)+'px Arial,sans-serif';ctx.fillText('THE END',w*.50,h*.39);
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.058)+'px Arial,sans-serif';ctx.fillText('Thanks',w*.50,h*.49);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.027)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.50,h*.78);
+  ctx.font='500 '+Math.round(w*.020)+'px Arial,sans-serif';ctx.fillText('http://www.cbtrade.com.tw',w*.50,h*.84);
+  ctx.fillStyle='#FFFFFF';ctx.fillRect(w*.35,h*.875,w*.30,h*.08);
+  // 清除原頁尾日期：承邦版本頁尾不保留 QUICK 原日期。
+
+}
+async function pdfToPptx(file,logo){
+  const data=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  if(!pdf.numPages)throw new Error('PDF 沒有可轉換的頁面');
+  const first=await pdf.getPage(1), base=first.getViewport({scale:1});
+  const ratio=base.height/base.width, slideW=10, slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
+  const pptx=new PptxGenJS();pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});pptx.layout='CBPDF';
+  pptx.author='承邦有限公司';pptx.subject='PDF 轉 PPTX';pptx.title='承邦 PDF 轉 PPTX';
+  const converter=getTC(); const meta=getProjectMeta(file.name); meta.title=converter(meta.title||'紅外線BGA返修設備').replace(/红外线/g,'紅外線').replace(/返修/g,'返修').replace(/设备/g,'設備'); const logoData=logo?await fileToDataURL(logo):null;
+  for(let i=1;i<=pdf.numPages;i++){
+    setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換＋頁首／頁尾套版，全部在手機本機處理');
+    const page=i===1?first:await pdf.getPage(i), vp=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
+    const ctx=canvas.getContext('2d',{alpha:false});await page.render({canvasContext:ctx,viewport:vp}).promise;
+    if(i>1 && i<pdf.numPages) await translatePdfPage(pdf,page,canvas,ctx,1.5,converter);
+    if(i===1){
+      const machine=canvas;const cover=document.createElement('canvas');cover.width=canvas.width;cover.height=canvas.height;
+      const cctx=cover.getContext('2d',{alpha:false});await drawHeaderTemplate(cctx,cover.width,cover.height,meta,null,logoData); 
+      const img=cover.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else if(i===pdf.numPages){
+      const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
+      const img=foot.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else{
+      // 所有內容頁：清除右下角 QUICK 網址／電話與左下角 QUICK 標誌文字，
+      // 再清除右上角 QUICK Logo，最後放入使用者 Logo。
+      const fw=canvas.width, fh=canvas.height;
+      ctx.save();
+      ctx.fillStyle='#FFFFFF';
+      ctx.fillRect(fw*.76,fh*.935,fw*.24,fh*.065);
+      ctx.fillRect(0,fh*.935,fw*.24,fh*.065);
+      ctx.restore();
+      await eraseQuickLogoAndPlaceUserLogo(ctx,fw,fh,logoData);
+      const img=canvas.toDataURL('image/jpeg',.88);
+      const slide=pptx.addSlide();
+      slide.background={color:'FFFFFF'};
+      slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }
+    canvas.width=1;canvas.height=1;
+  }
+  return pptx.write({outputType:'blob'});
+}
+$('form').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const file=$('file').files[0],logo=$('logo').files[0];if(!file)return;
+ $('submit').disabled=true;hide('ok');hide('err');$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
+ try{
+   const ext=file.name.toLowerCase().split('.').pop();
+   let blob,name;
+   if(ext==='pdf'){
+     blob=await pdfToPptx(file,logo);
+     name='承邦轉檔_'+file.name.replace(/\.pdf$/i,'.pptx');
+   }else if(ext==='pptx'){
+     setStatus('正在清洗 PPTX XML','檔案會在手機本機處理，不需等待伺服器');
+     blob=await cleanPptx(file);
+     name=makeOutputName(file.name);
+   }else throw new Error('只支援 PPTX 或 PDF');
+   // 最後一道保險：輸出前再次正規化檔名，絕不允許「承邦轉檔」前綴流出。
+   name=makeOutputName(name);
+   hide('status');
+   const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
+     try{await navigator.share({files:[out]});show('ok','✅ 轉檔完成，僅輸出 PPTX 轉檔檔案。')}
+     catch(x){if(x.name==='AbortError')show('ok','✅ 轉檔完成。檔案已準備好，可重新操作分享／儲存。');else download(blob,name)}
+   }else download(blob,name);
+ }catch(x){
+   hide('status');show('err','❌ 轉檔失敗：'+(x&&x.message?x.message:'未知錯誤'));
+ }finally{$('submit').disabled=false}
+});
+$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=9').catch(()=>{});
+</script>
+</body></html>
