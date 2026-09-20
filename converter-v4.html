@@ -99,7 +99,7 @@ function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   for(const yy of [.405,.505,.605]){ctx.beginPath();ctx.moveTo(w*.35,h*yy);ctx.lineTo(w*.70,h*yy);ctx.stroke()}
   ctx.fillStyle='#4b5563';ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
   ctx.fillText(meta.id,w*.43,h*.39);ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText(meta.version,w*.48,h*.49);ctx.fillText(meta.date,w*.48,h*.59);
-  if(machineCanvas)ctx.drawImage(machineCanvas,w*.035,h*.66,w*.28,h*.28);
+  if(machineCanvas){const crop=document.createElement('canvas');crop.width=Math.floor(machineCanvas.width*.34);crop.height=Math.floor(machineCanvas.height*.42);crop.getContext('2d').drawImage(machineCanvas,0,Math.floor(machineCanvas.height*.56),crop.width,crop.height,0,0,crop.width,crop.height);ctx.drawImage(crop,w*.035,h*.66,w*.28,h*.28);}
   ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.43,h*.78);
   ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
   if(logoData){const im=new Image();im.onload=()=>ctx.drawImage(im,w*.75,h*.04,w*.18,h*.07);im.src=logoData}
@@ -111,7 +111,7 @@ function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.058)+'px Arial,sans-serif';ctx.fillText('Thanks',w*.50,h*.49);
   ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.027)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.50,h*.78);
   ctx.font='500 '+Math.round(w*.020)+'px Arial,sans-serif';ctx.fillText('http://www.cbtrade.com.tw',w*.50,h*.84);
-  ctx.fillStyle='#666';ctx.font='400 '+Math.round(w*.014)+'px Arial,sans-serif';ctx.fillText(new Date().toISOString().slice(0,10).replace(/-/g,'/'),w*.50,h*.91);
+  ctx.fillStyle='#666';ctx.font='400 '+Math.round(w*.014)+'px Arial,sans-serif';ctx.fillText('2022/7/12',w*.50,h*.91);
 }
 async function pdfToPptx(file,logo){
   const data=await file.arrayBuffer();
