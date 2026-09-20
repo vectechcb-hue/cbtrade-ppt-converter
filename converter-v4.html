@@ -86,23 +86,63 @@ async function translatePdfPage(pdf,page,canvas,ctx,scale,converter){
     ctx.fillText(translated,x,y);
   }
 }
-function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
+async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
-  // Brand
-  ctx.fillStyle='#25245f';ctx.font='900 '+Math.round(w*.045)+'px Arial,sans-serif';ctx.fillText('VECTECH',w*.055,h*.095);
-  ctx.font='700 '+Math.round(w*.018)+'px Arial,sans-serif';ctx.fillText('www.cbtrade.com.tw',w*.14,h*.055);
-  ctx.fillStyle='#4b5563';ctx.font='500 '+Math.round(w*.026)+'px "Noto Sans TC",sans-serif';
-  ctx.textAlign='center';ctx.fillText('紅外線BGA返修設備',w*.50,h*.225);
-  ctx.textAlign='left';ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.022)+'px "Noto Sans TC",sans-serif';
-  ctx.fillText('項目編號：',w*.25,h*.39);ctx.fillText('版本代號：',w*.25,h*.49);ctx.fillText('發佈日期：',w*.25,h*.59);
-  ctx.strokeStyle='#9aa9bf';ctx.lineWidth=2;
-  for(const yy of [.405,.505,.605]){ctx.beginPath();ctx.moveTo(w*.35,h*yy);ctx.lineTo(w*.70,h*yy);ctx.stroke()}
-  ctx.fillStyle='#4b5563';ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
-  ctx.fillText(meta.id,w*.43,h*.39);ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText(meta.version,w*.48,h*.49);ctx.fillText(meta.date,w*.48,h*.59);
-  if(machineCanvas){const crop=document.createElement('canvas');crop.width=Math.floor(machineCanvas.width*.34);crop.height=Math.floor(machineCanvas.height*.42);crop.getContext('2d').drawImage(machineCanvas,0,Math.floor(machineCanvas.height*.56),crop.width,crop.height,0,0,crop.width,crop.height);ctx.drawImage(crop,w*.035,h*.66,w*.28,h*.28);}
-  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.43,h*.78);
-  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
-  if(logoData){const im=new Image();im.onload=()=>ctx.drawImage(im,w*.75,h*.04,w*.18,h*.07);im.src=logoData}
+
+  // ① 清除原 PDF 左上方舊 Logo／網址，改用使用者上傳的 Logo。
+  // 不再繪製任何固定的 VECTECH 字樣。
+  if(logoData){
+    const im=await new Promise((resolve,reject)=>{
+      const img=new Image();
+      img.onload=()=>resolve(img);
+      img.onerror=reject;
+      img.src=logoData;
+    });
+    const maxW=w*.24, maxH=h*.095;
+    const ratio=Math.min(maxW/im.naturalWidth,maxH/im.naturalHeight);
+    const lw=im.naturalWidth*ratio, lh=im.naturalHeight*ratio;
+    ctx.drawImage(im,w*.055,h*.035,lw,lh);
+  }
+
+  ctx.fillStyle='#4b5563';
+  ctx.font='500 '+Math.round(w*.026)+'px "Noto Sans TC",sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText(meta.title,w*.50,h*.225);
+
+  ctx.textAlign='left';
+  ctx.fillStyle='#111';
+  ctx.font='500 '+Math.round(w*.022)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('項目編號：',w*.25,h*.39);
+  ctx.fillText('版本代號：',w*.25,h*.49);
+  ctx.fillText('發佈日期：',w*.25,h*.59);
+
+  ctx.strokeStyle='#9aa9bf';
+  ctx.lineWidth=2;
+  for(const yy of [.405,.505,.605]){
+    ctx.beginPath();
+    ctx.moveTo(w*.35,h*yy);
+    ctx.lineTo(w*.70,h*yy);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle='#4b5563';
+  ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.id,w*.43,h*.39);
+
+  ctx.fillStyle='#111';
+  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.version,w*.48,h*.49);
+  ctx.fillText(meta.date,w*.48,h*.59);
+
+  // ② 頁首左下方原本的設備圖片完全留白。
+  // 不再從 PDF 第一頁擷取或繪製任何設備圖片。
+
+  ctx.fillStyle='#111';
+  ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('承邦有限公司',w*.43,h*.78);
+
+  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
 }
 function drawFooterTemplate(ctx,w,h){
   ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
@@ -130,7 +170,7 @@ async function pdfToPptx(file,logo){
     if(i>1 && i<pdf.numPages) await translatePdfPage(pdf,page,canvas,ctx,1.5,converter);
     if(i===1){
       const machine=canvas;const cover=document.createElement('canvas');cover.width=canvas.width;cover.height=canvas.height;
-      const cctx=cover.getContext('2d',{alpha:false});drawHeaderTemplate(cctx,cover.width,cover.height,meta,machine,logoData); 
+      const cctx=cover.getContext('2d',{alpha:false});await drawHeaderTemplate(cctx,cover.width,cover.height,meta,null,logoData); 
       const img=cover.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
     }else if(i===pdf.numPages){
       const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
