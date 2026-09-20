@@ -34,7 +34,7 @@ function show(id,text){$(id).textContent=text;$(id).style.display='block'}
 function hide(id){$(id).style.display='none'}
 function setStatus(text,sub=''){ $('status').innerHTML='<div class="spin"></div><div>'+text+'</div><small>'+sub+'</small>'; $('status').style.display='block' }
 function fileToDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
-function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);show('ok','✅ 轉檔完成，檔案已下載。')}
+function download(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),3000);show('ok','✅ 轉檔完成，僅輸出 PPTX 轉檔檔案。')}
 function cleanXml(text){return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')}
 async function cleanPptx(file){
   const zip=await JSZip.loadAsync(await file.arrayBuffer());
@@ -194,19 +194,57 @@ async function prepareUserLogo(logoData){
 }
 
 async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
-  // 完整清除 QUICK Logo 區域，再放入已強力去背且裁切後的使用者 Logo。
-  const x=w*.775, y=0, rw=w*.225, rh=h*.17;
-  ctx.save();
-  ctx.fillStyle='#FFFFFF';
-  ctx.fillRect(x,y,rw,rh);
-  ctx.restore();
+  // 只移除右上角原 QUICK Logo 的橘色／棕色像素，不整塊塗白，
+  // 避免把原稿右上角可能存在的文字或圖片一起蓋掉。
+  const region={x:Math.floor(w*.75),y:0,w:Math.floor(w*.25),h:Math.floor(h*.18)};
+  const imageData=ctx.getImageData(region.x,region.y,region.w,region.h);
+  const d=imageData.data;
+  for(let p=0;p<d.length;p+=4){
+    const r=d[p],g=d[p+1],b=d[p+2];
+    const mx=Math.max(r,g,b),mn=Math.min(r,g,b);
+    const sat=mx===0?0:(mx-mn)/mx;
+    const hue=(mx===mn)?0:(mx===r?((g-b)/(mx-mn)+6)%6:mx===g?(b-r)/(mx-mn)+2:(r-g)/(mx-mn)+4)/6;
+    // QUICK Logo 主要為橘／棕色；只擦這類像素。
+    if(sat>.28 && mx>95 && (hue<.13 || hue>.95)){
+      d[p]=255;d[p+1]=255;d[p+2]=255;d[p+3]=255;
+    }
+  }
+  ctx.putImageData(imageData,region.x,region.y);
 
   if(!logoData)return;
   const logoCanvas=await prepareUserLogo(logoData);
-  const maxW=rw*.99,maxH=rh*.92;
+
+  // Logo 放大，但先找「完全空白」的安全位置；不覆蓋文字或圖片。
+  const candidates=[
+    {x:.77,y:.018,w:.205,h:.105},
+    {x:.80,y:.018,w:.175,h:.095},
+    {x:.83,y:.018,w:.145,h:.085},
+    {x:.74,y:.018,w:.22,h:.085}
+  ];
+  const sampleClear=(x,y,rw,rh)=>{
+    const sx=Math.max(0,Math.floor(x)),sy=Math.max(0,Math.floor(y));
+    const sw=Math.min(w-sx,Math.max(1,Math.floor(rw)));
+    const sh=Math.min(h-sy,Math.max(1,Math.floor(rh)));
+    const pix=ctx.getImageData(sx,sy,sw,sh).data;
+    let nonWhite=0,total=pix.length/4;
+    for(let p=0;p<pix.length;p+=4){
+      const mx=Math.max(pix[p],pix[p+1],pix[p+2]);
+      if(mx<242) nonWhite++;
+    }
+    return nonWhite/total < .008;
+  };
+
+  let chosen=null;
+  for(const q of candidates){
+    if(sampleClear(q.x*w,q.y*h,q.w*w,q.h*h)){chosen=q;break;}
+  }
+  // 如果右上角沒有足夠留白，退回最小尺寸，仍不遮蓋主要內容。
+  if(!chosen)chosen={x:.84,y:.02,w:.13,h:.07};
+
+  const maxW=w*chosen.w,maxH=h*chosen.h;
   const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
   const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
-  const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+  const lx=w*chosen.x+(maxW-lw)/2,ly=h*chosen.y+(maxH-lh)/2;
   ctx.drawImage(logoCanvas,lx,ly,lw,lh);
 }
 
@@ -281,7 +319,7 @@ $('form').addEventListener('submit',async e=>{
    hide('status');
    const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
    if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
-     try{await navigator.share({files:[out],title:name});show('ok','✅ 轉檔完成，已開啟分享／儲存選單。')}
+     try{await navigator.share({files:[out],title:name});show('ok','✅ 轉檔完成，僅輸出 PPTX 轉檔檔案。')}
      catch(x){if(x.name==='AbortError')show('ok','✅ 轉檔完成。檔案已準備好，可重新操作分享／儲存。');else download(blob,name)}
    }else download(blob,name);
  }catch(x){
@@ -289,6 +327,6 @@ $('form').addEventListener('submit',async e=>{
  }finally{$('submit').disabled=false}
 });
 $('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=5').catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=6').catch(()=>{});
 </script>
 </body></html>
