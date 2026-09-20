@@ -59,7 +59,7 @@ async function pdfToPptx(file,logo){
   const ratio=base.height/base.width;
   const slideW=10;
   const slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
-  const pptx=new pptxgen();
+  const pptx=new PptxGenJS();
   pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});
   pptx.layout='CBPDF';
   pptx.author='承邦有限公司';
