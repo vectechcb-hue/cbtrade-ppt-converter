@@ -1,2 +1,2 @@
-{"name":"承邦有限公司｜一鍵轉檔 V2.4","short_name":"承邦轉檔","start_url":"./app.html?v=14","scope":"./","display":"standalone","background_color":"#fff7ed","theme_color":"#f97316","lang":"zh-TW","description":"承邦有限公司 PPTX／PDF 一鍵轉檔手機 App V2.4，支援 Logo 純色背景自動去背與離線 PPTX 處理。","icons":[{"src":"./icon.svg?v=14","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
+{"name":"承邦有限公司｜一鍵轉檔 V2.5","short_name":"承邦轉檔","start_url":"./app.html?v=15","scope":"./","display":"standalone","background_color":"#fff7ed","theme_color":"#f97316","lang":"zh-TW","description":"承邦有限公司 PPTX／PDF 一鍵轉檔手機 App V2.5，支援 Logo 自動去背、繁體轉換與移除 QUICK 文字。","icons":[{"src":"./icon.svg?v=15","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
 
