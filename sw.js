@@ -1,4 +1,4 @@
-const CACHE='cbtrade-ppt-converter-v13';
+const CACHE='cbtrade-ppt-converter-v14';
 const SHELL=['./','./index.html','./converter.html','./app.html','./manifest.webmanifest','./icon.svg','./vendor/jszip.min.js','./vendor/pptxgen.min.js','./assets/vectech-logo.png.b64','./assets/thank-you-reference.png.b64'];
 const CDN_HOSTS=new Set(['cdnjs.cloudflare.com','cdn.jsdelivr.net']);
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(CACHE);await cache.addAll(SHELL);await self.skipWaiting()})()));
@@ -14,3 +14,4 @@ self.addEventListener('fetch',event=>{
   catch(error){if(local)return (await caches.match('./app.html'))||(await caches.match('./converter.html'));throw error}
  })());
 });
+
