@@ -7,8 +7,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="承邦轉檔">
-<link rel="manifest" href="./manifest.webmanifest?v=14">
-<title>承邦有限公司｜一鍵轉檔 V2.4</title>
+<link rel="manifest" href="./manifest.webmanifest?v=15">
+<title>承邦有限公司｜一鍵轉檔 V2.5</title>
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#fff7ed 0%,#f8fafc 48%,#fff 100%);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#172033;padding:18px}.wrap{width:100%;max-width:560px;margin:0 auto}.card{background:#fff;border-radius:28px;padding:22px;border:1px solid #fed7aa;box-shadow:0 16px 50px #9a34121a}.head{text-align:center;padding:4px 0 18px}.head h1{margin:0;color:#c2410c;font-size:28px;font-weight:900}.head p{margin:7px 0 0;color:#64748b;font-size:14px}.section{background:#fffaf5;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin:12px 0}.label{display:block;font-size:14px;font-weight:900;margin-bottom:9px;color:#334155}input[type=file]{width:100%;font-size:14px}input[type=file]::file-selector-button{border:0;background:#ffedd5;color:#c2410c;border-radius:12px;padding:10px 13px;font-weight:900;margin-right:8px}.hint{font-size:12px;color:#64748b;line-height:1.6;margin-top:8px}button{width:100%;border:0;border-radius:17px;padding:16px;font-size:18px;font-weight:900;color:#fff;background:#f97316;box-shadow:0 8px 18px #f9731633}button:disabled{opacity:.55}.status,.msg{display:none;margin-top:14px;padding:15px;border-radius:16px;text-align:center;font-weight:800}.status{background:#fff7ed;color:#c2410c}.msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}.msg.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}.spin{width:40px;height:40px;border:4px solid #fed7aa;border-top-color:#f97316;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 10px}@keyframes s{to{transform:rotate(360deg)}}.foot{text-align:center;color:#94a3b8;font-size:11px;margin-top:16px}
 </style>
@@ -17,17 +17,17 @@
 </style>
 </head>
 <body><div class="wrap"><main class="card">
-<div class="head"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V2.4</p></div>
+<div class="head"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V2.5</p></div>
 <form id="form">
-<div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF。</div></div>
+<div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF；自動轉為繁體中文並清除文字中的 QUICK。</div></div>
 <div class="section"><label class="label">② 公司 Logo（預設威鐵克）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">上傳 PNG／JPG 後會自動清除 Logo 外圍的純色背景（含黑底、白底），並預覽透明效果。</div><div id="logoPreviewWrap" class="logo-preview-wrap" aria-live="polite"><div class="logo-checker"><canvas id="logoPreview" width="1" height="1"></canvas></div><div id="logoPreviewStatus" class="logo-preview-status"></div></div></div>
 <button id="submit" type="submit">🚀 開始一鍵轉檔</button><div id="backend" style="text-align:center;font-size:12px;color:#64748b;margin-top:10px">正在確認轉檔服務…</div>
 </form>
 <div id="status" class="status"><div class="spin"></div><div>正在處理檔案…</div><small>請保持 App 開啟</small></div>
 <div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
-<div class="foot">V2.4｜承邦有限公司</div>
+<div class="foot">V2.5｜承邦有限公司</div>
 </main></div>
-<script src="./vendor/jszip.min.js?v=14"></script>
+<script src="./vendor/jszip.min.js?v=15"></script>
 <script async src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="./vendor/pptxgen.min.js?v=1"></script>
 <script async src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
@@ -88,7 +88,16 @@ function getTC(){
 }
 function xmlText(value){return value.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'")}
 function xmlEscape(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
-function translateXmlText(xml,converter){return xml.replace(/(<a:t\b[^>]*>)([\s\S]*?)(<\/a:t>)/g,(_,open,text,close)=>{let value=converter(xmlText(text));if(/^20\d{6}$/.test(value))value=value.slice(0,4)+'.'+value.slice(4,6)+'.'+value.slice(6);return open+xmlEscape(value)+close})}
+function removeQuickTextXml(xml){
+  xml=xml.replace(/<a:p\b[\s\S]*?<\/a:p>/g,paragraph=>{
+    const joined=[...paragraph.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>xmlText(m[1])).join('');
+    if(!/QUICK/i.test(joined))return paragraph;
+    return paragraph.replace(/(<a:t\b[^>]*>)[\s\S]*?(<\/a:t>)/g,'$1$2').replace(/<a:bu(?:Char|AutoNum)\b[^>]*\/>/g,'<a:buNone/>');
+  });
+  xml=xml.replace(/(<a:t\b[^>]*>)([\s\S]*?)(<\/a:t>)/g,(_,open,text,close)=>/QUICK/i.test(xmlText(text))?open+close:open+text+close);
+  return xml.replace(/(<c:v\b[^>]*>)([\s\S]*?)(<\/c:v>)/g,(_,open,text,close)=>/QUICK/i.test(xmlText(text))?open+close:open+text+close);
+}
+function translateXmlText(xml,converter){return removeQuickTextXml(xml).replace(/(<a:t\b[^>]*>)([\s\S]*?)(<\/a:t>)/g,(_,open,text,close)=>{let value=converter(xmlText(text));if(/^20\d{6}$/.test(value))value=value.slice(0,4)+'.'+value.slice(4,6)+'.'+value.slice(6);return open+xmlEscape(value)+close})}
 function clearQuickFooterShapes(xml){
   return xml.replace(/<p:sp\b[\s\S]*?<\/p:sp>/g,shape=>{
     const joined=[...shape.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>xmlText(m[1])).join('');
@@ -222,7 +231,7 @@ async function cleanPptx(file,logoFile){
   const refDims=closingBytes?{width:new DataView(closingBytes.buffer,closingBytes.byteOffset,closingBytes.byteLength).getUint32(16),height:new DataView(closingBytes.buffer,closingBytes.byteOffset,closingBytes.byteLength).getUint32(20)}:null;
   await removeQuickLayoutBranding(zip);
   for(const [index,name] of slideNames.entries()){
-    setStatus('正在處理第 '+(index+1)+' / '+slideNames.length+' 張投影片','繁體中文轉換、清除 QUICK 背景並套用承邦版面');
+    setStatus('正在處理第 '+(index+1)+' / '+slideNames.length+' 張投影片','繁體中文轉換、清除 QUICK 文字與背景並套用承邦版面');
     let xml=await zip.file(name).async('string');
     xml=translateXmlText(xml,getTC());
     xml=clearQuickFooterShapes(cleanXml(xml));
@@ -305,15 +314,17 @@ async function translatePdfPage(pdf,page,canvas,ctx,scale,converter){
   const text=await page.getTextContent();
   for(const item of text.items||[]){
     if(!item.str||!item.str.trim())continue;
+    const hasQuick=/QUICK/i.test(item.str);
     const translated=converter(item.str);
-    if(translated===item.str)continue;
+    if(!hasQuick&&translated===item.str)continue;
     const tx=item.transform;
     const x=tx[4]*scale;
     const y=canvas.height-(tx[5]*scale);
     const h=Math.max(14,Math.abs(tx[3]||tx[0]||12)*scale);
     const w=Math.max(20,(item.width||20)*scale);
-    ctx.fillStyle='rgba(255,255,255,.96)';
+    ctx.fillStyle='#FFFFFF';
     ctx.fillRect(x-2,y-h-3,w+5,h+7);
+    if(hasQuick)continue;
     const fs=Math.max(12,Math.min(42,h*.9));
     ctx.font='500 '+fs+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';
     ctx.fillStyle='#222';
@@ -499,7 +510,7 @@ async function pdfToPptx(file,logo){
   pptx.author='承邦有限公司';pptx.subject='PDF 轉 PPTX';pptx.title='承邦 PDF 轉 PPTX';
   const converter=getTC(); const meta=getProjectMeta(file.name); meta.title=converter(meta.title||'紅外線BGA返修設備').replace(/红外线/g,'紅外線').replace(/返修/g,'返修').replace(/设备/g,'設備'); const logoData=await getCompanyLogoData(logo);
   for(let i=1;i<=pdf.numPages;i++){
-    setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換＋頁首／頁尾套版，全部在手機本機處理');
+    setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換、移除 QUICK 文字並套用頁首／頁尾，全部在手機本機處理');
     const page=i===1?first:await pdf.getPage(i), vp=page.getViewport({scale:1.5});
     const canvas=document.createElement('canvas');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
     const ctx=canvas.getContext('2d',{alpha:false});await page.render({canvasContext:ctx,viewport:vp}).promise;
@@ -558,7 +569,7 @@ $('form').addEventListener('submit',async e=>{
  }finally{$('submit').disabled=false}
 });
 $('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=14').catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15').catch(()=>{});
 </script>
 </body></html>
 
