@@ -1,5 +1,5 @@
-const CACHE='cbtrade-ppt-converter-v12';
-const SHELL=['./','./index.html','./converter.html','./app.html','./manifest.webmanifest','./icon.svg','./vendor/jszip.min.js','./vendor/pptxgen.min.js','./assets/vectech-logo.png.b64'];
+const CACHE='cbtrade-ppt-converter-v13';
+const SHELL=['./','./index.html','./converter.html','./app.html','./manifest.webmanifest','./icon.svg','./vendor/jszip.min.js','./vendor/pptxgen.min.js','./assets/vectech-logo.png.b64','./assets/thank-you-reference.png.b64'];
 const CDN_HOSTS=new Set(['cdnjs.cloudflare.com','cdn.jsdelivr.net']);
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(CACHE);await cache.addAll(SHELL);await self.skipWaiting()})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)));await self.clients.claim()})()));
