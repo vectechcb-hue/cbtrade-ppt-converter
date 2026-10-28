@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f97316">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="承邦轉檔">
+<link rel="manifest" href="./manifest.webmanifest?v=15">
+<title>承邦有限公司｜一鍵轉檔 V2.5</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(180deg,#fff7ed 0%,#f8fafc 48%,#fff 100%);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif;color:#172033;padding:18px}.wrap{width:100%;max-width:560px;margin:0 auto}.card{background:#fff;border-radius:28px;padding:22px;border:1px solid #fed7aa;box-shadow:0 16px 50px #9a34121a}.head{text-align:center;padding:4px 0 18px}.head h1{margin:0;color:#c2410c;font-size:28px;font-weight:900}.head p{margin:7px 0 0;color:#64748b;font-size:14px}.section{background:#fffaf5;border:1px solid #fed7aa;border-radius:18px;padding:16px;margin:12px 0}.label{display:block;font-size:14px;font-weight:900;margin-bottom:9px;color:#334155}input[type=file]{width:100%;font-size:14px}input[type=file]::file-selector-button{border:0;background:#ffedd5;color:#c2410c;border-radius:12px;padding:10px 13px;font-weight:900;margin-right:8px}.hint{font-size:12px;color:#64748b;line-height:1.6;margin-top:8px}button{width:100%;border:0;border-radius:17px;padding:16px;font-size:18px;font-weight:900;color:#fff;background:#f97316;box-shadow:0 8px 18px #f9731633}button:disabled{opacity:.55}.status,.msg{display:none;margin-top:14px;padding:15px;border-radius:16px;text-align:center;font-weight:800}.status{background:#fff7ed;color:#c2410c}.msg.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d}.msg.err{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c}.spin{width:40px;height:40px;border:4px solid #fed7aa;border-top-color:#f97316;border-radius:50%;animation:s 1s linear infinite;margin:0 auto 10px}@keyframes s{to{transform:rotate(360deg)}}.foot{text-align:center;color:#94a3b8;font-size:11px;margin-top:16px}
+</style>
+<style>
+.logo-preview-wrap{display:none;margin-top:12px}.logo-preview-wrap.visible{display:block}.logo-checker{min-height:96px;display:flex;align-items:center;justify-content:center;padding:10px;border:1px solid #cbd5e1;border-radius:12px;background-color:#fff;background-image:linear-gradient(45deg,#e2e8f0 25%,transparent 25%),linear-gradient(-45deg,#e2e8f0 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e2e8f0 75%),linear-gradient(-45deg,transparent 75%,#e2e8f0 75%);background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0}.logo-checker canvas{display:block;max-width:100%;max-height:132px;width:auto;height:auto}.logo-preview-status{margin-top:7px;text-align:center;font-size:12px;font-weight:700;color:#475569}
+</style>
+</head>
+<body><div class="wrap"><main class="card">
+<div class="head"><h1>承邦有限公司</h1><p>專屬簡報轉檔神器 V2.5</p></div>
+<form id="form">
+<div class="section"><label class="label">① 選擇簡報檔案</label><input id="file" type="file" accept=".pptx,.pdf" required><div class="hint">支援 PPTX、PDF；自動轉為繁體中文並清除文字中的 QUICK。</div></div>
+<div class="section"><label class="label">② 公司 Logo（預設威鐵克）</label><input id="logo" type="file" accept="image/png,image/jpeg"><div class="hint">上傳 PNG／JPG 後會自動清除 Logo 外圍的純色背景（含黑底、白底），並預覽透明效果。</div><div id="logoPreviewWrap" class="logo-preview-wrap" aria-live="polite"><div class="logo-checker"><canvas id="logoPreview" width="1" height="1"></canvas></div><div id="logoPreviewStatus" class="logo-preview-status"></div></div></div>
+<button id="submit" type="submit">🚀 開始一鍵轉檔</button><div id="backend" style="text-align:center;font-size:12px;color:#64748b;margin-top:10px">正在確認轉檔服務…</div>
+</form>
+<div id="status" class="status"><div class="spin"></div><div>正在處理檔案…</div><small>請保持 App 開啟</small></div>
+<div id="ok" class="msg ok"></div><div id="err" class="msg err"></div>
+<div class="foot">V2.5｜承邦有限公司</div>
+</main></div>
+<script src="./vendor/jszip.min.js?v=15"></script>
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="./vendor/pptxgen.min.js?v=1"></script>
+<script async src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+function show(id,text){$(id).textContent=text;$(id).style.display='block'}
+function hide(id){$(id).style.display='none'}
+function setStatus(text,sub=''){ $('status').innerHTML='<div class="spin"></div><div>'+text+'</div><small>'+sub+'</small>'; $('status').style.display='block' }
+function waitForGlobal(globalName,timeoutMs=15000,errorMessage='所需元件尚未載入，請確認網路後重試'){
+  if(window[globalName])return Promise.resolve(window[globalName]);
+  return new Promise((resolve,reject)=>{
+    const script=[...document.scripts].find(s=>s.src&&s.src.includes(globalName==='pdfjsLib'?'pdf.min.js':'opencc'));
+    if(!script){reject(new Error(errorMessage));return}
+    let done=false;
+    const finish=(err)=>{if(done)return;done=true;clearTimeout(timer);err?reject(err):resolve(window[globalName])};
+    script.addEventListener('load',()=>window[globalName]?finish():finish(new Error(errorMessage)),{once:true});
+    script.addEventListener('error',()=>finish(new Error(errorMessage)),{once:true});
+    const timer=setTimeout(()=>finish(new Error(errorMessage)),timeoutMs);
+  });
+}
+function fileToDataURL(file){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=reject;r.readAsDataURL(file)})}
+let cachedCompanyLogoData=null;
+async function getCompanyLogoData(overrideFile){
+  if(overrideFile)return (await getPreparedUploadedLogo(overrideFile)).dataURL;
+  if(cachedCompanyLogoData)return cachedCompanyLogoData;
+  const response=await fetch('./assets/vectech-logo.png.b64');
+  if(!response.ok)throw new Error('內建威鐵克 Logo 載入失敗，請重新整理 App 後再試');
+  cachedCompanyLogoData='data:image/png;base64,'+(await response.text()).trim();
+  return cachedCompanyLogoData;
+}
+let cachedClosingReferenceBytes=null;
+async function getClosingReferenceBytes(){
+  if(cachedClosingReferenceBytes)return cachedClosingReferenceBytes;
+  const response=await fetch('./assets/thank-you-reference.png.b64');
+  if(!response.ok)throw new Error('承邦結尾版型載入失敗，請重新整理 App 後再試');
+  const binary=atob((await response.text()).trim());
+  cachedClosingReferenceBytes=Uint8Array.from(binary,ch=>ch.charCodeAt(0));
+  return cachedClosingReferenceBytes;
+}
+function download(blob,name){
+  // 唯一下載物件：PPTX Blob。程式不建立任何 TXT／文字檔。
+  const u=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=u;a.download=name;a.type='application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),3000);
+  show('ok','✅ 轉檔完成，僅輸出 1 個 PPTX 檔案。');
+}
+function cleanXml(text){return text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,'')}
+const TC_CHAR_MAP={报:'報',备:'備',编:'編',标:'標',补:'補',参:'參',侧:'側',测:'測',产:'產',偿:'償',场:'場',称:'稱',础:'礎',传:'傳',纯:'純',导:'導',电:'電',动:'動',独:'獨',对:'對',发:'發',阀:'閥',丰:'豐',构:'構',关:'關',规:'規',国:'國',过:'過',号:'號',后:'後',户:'戶',护:'護',换:'換',监:'監',减:'減',检:'檢',见:'見',键:'鍵',脚:'腳',节:'節',洁:'潔',结:'結',劲:'勁',经:'經',净:'淨',径:'徑',据:'據',觉:'覺',开:'開',扩:'擴',来:'來',连:'連',灵:'靈',领:'領',录:'錄',滤:'濾',码:'碼',脑:'腦',盘:'盤',喷:'噴',气:'氣',浅:'淺',枪:'槍',强:'強',热:'熱',软:'軟',润:'潤',扫:'掃',设:'設',摄:'攝',实:'實',视:'視',适:'適',寿:'壽',输:'輸',属:'屬',术:'術',数:'數',说:'說',丝:'絲',缩:'縮',统:'統',头:'頭',图:'圖',维:'維',为:'為',温:'溫',稳:'穩',无:'無',雾:'霧',细:'細',显:'顯',详:'詳',项:'項',续:'續',选:'選',讯:'訊',压:'壓',哑:'啞',烟:'煙',颜:'顏',验:'驗',样:'樣',业:'業',义:'義',艺:'藝',异:'異',应:'應',预:'預',运:'運',择:'擇',栅:'柵',种:'種',轴:'軸',转:'轉',装:'裝',组:'組',机:'機',锡:'錫',体:'體',时:'時',记:'記',采:'採'};
+const TC_PHRASES=[['信息','資訊'],['软件','軟體'],['硬件','硬體'],['电脑','電腦'],['摄像头','攝影機'],['工作台','工作台'],['采集','採集'],['通讯','通訊'],['金属','金屬'],['引脚','引腳'],['后面板','後面板'],['目录','目錄']];
+function fallbackTC(value){let text=String(value);for(const [from,to] of TC_PHRASES)text=text.replaceAll(from,to);return [...text].map(ch=>TC_CHAR_MAP[ch]||ch).join('')}
+let cachedTC=null;
+function getTC(){
+  if(cachedTC)return cachedTC;
+  try{if(window.OpenCC&&typeof OpenCC.Converter==='function')cachedTC=OpenCC.Converter({from:'cn',to:'tw'})}catch(_){}
+  return cachedTC||fallbackTC;
+}
+function xmlText(value){return value.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'")}
+function xmlEscape(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
+function removeQuickTextXml(xml){
+  xml=xml.replace(/<a:p\b[\s\S]*?<\/a:p>/g,paragraph=>{
+    const joined=[...paragraph.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>xmlText(m[1])).join('');
+    if(!/QUICK/i.test(joined))return paragraph;
+    return paragraph.replace(/(<a:t\b[^>]*>)[\s\S]*?(<\/a:t>)/g,'$1$2').replace(/<a:bu(?:Char|AutoNum)\b[^>]*\/>/g,'<a:buNone/>');
+  });
+  xml=xml.replace(/(<a:t\b[^>]*>)([\s\S]*?)(<\/a:t>)/g,(_,open,text,close)=>/QUICK/i.test(xmlText(text))?open+close:open+text+close);
+  return xml.replace(/(<c:v\b[^>]*>)([\s\S]*?)(<\/c:v>)/g,(_,open,text,close)=>/QUICK/i.test(xmlText(text))?open+close:open+text+close);
+}
+function translateXmlText(xml,converter){return removeQuickTextXml(xml).replace(/(<a:t\b[^>]*>)([\s\S]*?)(<\/a:t>)/g,(_,open,text,close)=>{let value=converter(xmlText(text));if(/^20\d{6}$/.test(value))value=value.slice(0,4)+'.'+value.slice(4,6)+'.'+value.slice(6);return open+xmlEscape(value)+close})}
+function clearQuickFooterShapes(xml){
+  return xml.replace(/<p:sp\b[\s\S]*?<\/p:sp>/g,shape=>{
+    const joined=[...shape.matchAll(/<a:t\b[^>]*>([\s\S]*?)<\/a:t>/g)].map(m=>xmlText(m[1])).join('');
+    if(/(?:QUICK\s+INTELLIGENT\s+EQUIPMENT|FIND\s+OUT\s+MORE\s+ON\s+QUICK-GLOBAL\.COM|quick-global\.com|400-789-7899|快克智能装备股份有限公司|快克智能裝備股份有限公司|报告日期|報告日期)/i.test(joined))return shape.replace(/(<a:t\b[^>]*>)[\s\S]*?(<\/a:t>)/g,'$1$2');
+    return shape;
+  });
+}
+function removeClosingBrandPictures(xml,slideW,slideH){
+  return xml.replace(/<p:pic\b[\s\S]*?<\/p:pic>/g,pic=>{
+    const ext=pic.match(/<a:xfrm\b[\s\S]*?<a:ext cx="(\d+)" cy="(\d+)"\s*\/>/);
+    if(!ext)return pic;
+    const width=Number(ext[1]),height=Number(ext[2]);
+    return width>=slideW*.8&&height>=slideH*.8?pic:'';
+  });
+}
+function logoXml(slideXml,rId,slideW,slideH,aspect,isCover=false,isClosing=false){
+  const ids=[...slideXml.matchAll(/<p:cNvPr\b[^>]*\bid="(\d+)"/g)].map(m=>Number(m[1]));
+  const shapeId=Math.max(1,...ids)+1,picId=shapeId+1;
+  const x=Math.round(slideW*.76),y=Math.round(slideH*.02),boxW=Math.round(slideW*.23),boxH=Math.round(slideH*.14);
+  const maxW=boxW*.90,maxH=boxH*.78,logoW=Math.min(maxW,maxH*aspect),logoH=logoW/aspect;
+  const logoX=Math.round(x+(boxW-logoW)/2),logoY=Math.round(y+(boxH-logoH)/2);
+  const bg=isCover||isClosing?'':'<p:sp><p:nvSpPr><p:cNvPr id="'+shapeId+'" name="VECTECH Logo Background"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="'+x+'" y="'+y+'"/><a:ext cx="'+boxW+'" cy="'+boxH+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>';
+  const pic='<p:pic><p:nvPicPr><p:cNvPr id="'+picId+'" name="VECTECH Company Logo" descr="VECTECH company logo"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="'+rId+'"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="'+logoX+'" y="'+logoY+'"/><a:ext cx="'+Math.round(logoW)+'" cy="'+Math.round(logoH)+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+  let coverPic='';
+  if(isCover){
+    const coverX=Math.round(slideW*.30),coverY=Math.round(slideH*.69),coverW=Math.round(slideW*.40),coverH=Math.round(slideH*.20);
+    const maxCoverW=coverW*.90,maxCoverH=coverH*.70,coverLogoW=Math.min(maxCoverW,maxCoverH*aspect),coverLogoH=coverLogoW/aspect;
+    const coverLogoX=Math.round(coverX+(coverW-coverLogoW)/2),coverLogoY=Math.round(coverY+(coverH-coverLogoH)/2);
+    coverPic='<p:pic><p:nvPicPr><p:cNvPr id="'+(picId+1)+'" name="VECTECH Cover Logo" descr="VECTECH company logo"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="'+rId+'"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="'+coverLogoX+'" y="'+coverLogoY+'"/><a:ext cx="'+Math.round(coverLogoW)+'" cy="'+Math.round(coverLogoH)+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+  }
+  return slideXml.replace('</p:spTree>',bg+pic+coverPic+'</p:spTree>');
+}
+function addImageRelationship(xml,rId,target='../media/vectech-company-logo.png'){
+  const rel='<Relationship Id="'+rId+'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="'+target+'"/>';
+  if(xml.includes('</Relationships>'))return xml.replace('</Relationships>',rel+'</Relationships>');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+rel+'</Relationships>';
+}
+async function addSlideImageRelations(zip,slideName,targets){
+  const relPath=slideName.replace('ppt/slides/','ppt/slides/_rels/')+'.rels';
+  let rels=zip.file(relPath)?await zip.file(relPath).async('string'):'';
+  const ids=[...rels.matchAll(/\bId="rId(\d+)"/g)].map(m=>Number(m[1]));let next=Math.max(0,...ids)+1;const out=[];
+  for(const target of targets){const rid='rId'+next++;rels=addImageRelationship(rels,rid,'../media/'+target);out.push(rid)}
+  zip.file(relPath,rels,{compression:'DEFLATE'});return out;
+}
+async function removeQuickLayoutBranding(zip){
+  const quickAssets=new Set(['image1.png','image5.png','image7.png','image8.png','image9.png','image10.png']);
+  for(const name of Object.keys(zip.files).filter(n=>/^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(n))){
+    let xml=await zip.file(name).async('string');
+    const relPath=name.replace('ppt/slideLayouts/','ppt/slideLayouts/_rels/')+'.rels';
+    if(zip.file(relPath)){
+      const rels=await zip.file(relPath).async('string');
+      const targetById=new Map([...rels.matchAll(/<Relationship\b([^>]*?)\/>/g)].map(m=>[((m[1].match(/\bId="([^"]+)"/)||[])[1]),((m[1].match(/\bTarget="([^"]+)"/)||[])[1]||'').split('/').pop().toLowerCase()]));
+      xml=xml.replace(/<p:pic\b[\s\S]*?<\/p:pic>/g,pic=>{const rid=(pic.match(/r:embed="([^"]+)"/)||[])[1];return quickAssets.has(targetById.get(rid))?'':pic});
+    }
+    xml=clearQuickFooterShapes(xml);
+    zip.file(name,xml,{compression:'DEFLATE'});
+  }
+}
+function textShapeXml(id,name,x,y,cx,cy,text,opts={}){
+  x=Math.round(x);y=Math.round(y);cx=Math.round(cx);cy=Math.round(cy);const size=Math.round((opts.size||14)*100),color=opts.color||'334155',bold=opts.bold?' b="1"':'',align=opts.align||'l',font=opts.font||'Microsoft JhengHei';
+  return '<p:sp><p:nvSpPr><p:cNvPr id="'+id+'" name="'+xmlEscape(name)+'"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="'+x+'" y="'+y+'"/><a:ext cx="'+cx+'" cy="'+cy+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr wrap="square" lIns="0" rIns="0" tIns="0" bIns="0" anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="'+align+'"/><a:r><a:rPr lang="zh-TW" sz="'+size+'"'+bold+' dirty="0"><a:solidFill><a:srgbClr val="'+color+'"/></a:solidFill><a:latin typeface="'+xmlEscape(font)+'"/><a:ea typeface="'+xmlEscape(font)+'"/></a:rPr><a:t xml:space="preserve">'+xmlEscape(text)+'</a:t></a:r><a:endParaRPr lang="zh-TW" sz="'+size+'"/></a:p></p:txBody></p:sp>';
+}
+function rectShapeXml(id,name,x,y,cx,cy,color){
+  x=Math.round(x);y=Math.round(y);cx=Math.round(cx);cy=Math.round(cy);
+  return '<p:sp><p:nvSpPr><p:cNvPr id="'+id+'" name="'+xmlEscape(name)+'"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="'+x+'" y="'+y+'"/><a:ext cx="'+cx+'" cy="'+cy+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="'+color+'"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr></p:sp>';
+}
+function pictureShapeXml(id,name,rId,x,y,cx,cy,descr=''){
+  x=Math.round(x);y=Math.round(y);cx=Math.round(cx);cy=Math.round(cy);
+  return '<p:pic><p:nvPicPr><p:cNvPr id="'+id+'" name="'+xmlEscape(name)+'" descr="'+xmlEscape(descr)+'"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="'+rId+'"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="'+x+'" y="'+y+'"/><a:ext cx="'+cx+'" cy="'+cy+'"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>';
+}
+function templateSlideXml(xml,shapes){
+  xml=xml.replace(/<p:sld\b([^>]*)>/,(_,attrs)=>'<p:sld'+(attrs.includes('showMasterSp=')?attrs.replace(/showMasterSp="[^"]*"/,'showMasterSp="0"'):attrs+' showMasterSp="0"')+'>');
+  const tree='<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>'+shapes+'</p:spTree>';
+  const bg='<p:bg><p:bgPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>';
+  return xml.replace(/<p:cSld\b[^>]*>[\s\S]*?<\/p:cSld>/,'<p:cSld>'+bg+tree+'</p:cSld>');
+}
+function fitLogoBox(slideW,slideH,aspect,maxW,maxH,x,y){
+  const w=Math.min(maxW,maxH*aspect),h=w/aspect;return{x:Math.round(x+(maxW-w)/2),y:Math.round(y+(maxH-h)/2),w:Math.round(w),h:Math.round(h)};
+}
+function companyOpeningShapes(slideW,slideH,aspect,logoRid){
+  const logo=fitLogoBox(slideW,slideH,aspect,slideW*.42,slideH*.21,slideW*.29,slideH*.18);let id=2;
+  let out=rectShapeXml(id++,'純白背景',0,0,slideW,slideH,'FFFFFF');
+  out+=rectShapeXml(id++,'承邦橘色識別線',slideW*.44,slideH*.15,slideW*.12,Math.max(16000,slideH*.006),'F97316');
+  out+=pictureShapeXml(id++,'VECTECH Company Logo',logoRid,logo.x,logo.y,logo.w,logo.h,'VECTECH 威鐵克企業標誌');
+  out+=textShapeXml(id++,'承邦有限公司',slideW*.15,slideH*.48,slideW*.70,slideH*.10,'承邦有限公司',{size:32,bold:true,color:'334155',align:'ctr'});
+  out+=textShapeXml(id++,'簡報主題',slideW*.15,slideH*.60,slideW*.70,slideH*.07,'桌面式焊接機（含工作台）專案簡報',{size:18,color:'64748B',align:'ctr'});
+  out+=rectShapeXml(id++,'頁尾分隔線',slideW*.36,slideH*.76,slideW*.28,Math.max(10000,slideH*.002),'FED7AA');
+  out+=textShapeXml(id++,'承邦公司網址',slideW*.15,slideH*.79,slideW*.70,slideH*.06,'http://www.cbtrade.com.tw',{size:13,color:'64748B',align:'ctr'});
+  return out;
+}
+function projectCoverShapes(slideW,slideH,aspect,logoRid,meta){
+  let id=2;const logo=fitLogoBox(slideW,slideH,aspect,slideW*.17,slideH*.10,slideW*.79,slideH*.015);
+  let out=rectShapeXml(id++,'純白背景',0,0,slideW,slideH,'FFFFFF');
+  out+=textShapeXml(id++,'產品標題',slideW*.10,slideH*.075,slideW*.80,slideH*.105,meta.title||'專案簡報',{size:30,bold:true,color:'44546A',align:'ctr'});
+  out+=pictureShapeXml(id++,'VECTECH Company Logo',logoRid,logo.x,logo.y,logo.w,logo.h,'VECTECH 威鐵克企業標誌');
+  const rows=[['項目編號：',meta.id],['版本代號：',meta.version],['發布日期：',meta.date]];
+  const ys=[slideH*.285,slideH*.405,slideH*.525];
+  rows.forEach((row,i)=>{out+=textShapeXml(id++,'資料標籤'+(i+1),slideW*.13,ys[i],slideW*.20,slideH*.065,row[0],{size:18,color:'334155'});out+=textShapeXml(id++,'資料內容'+(i+1),slideW*.34,ys[i],slideW*.48,slideH*.065,row[1]||'',{size:18,color:'111827',align:'ctr'});out+=rectShapeXml(id++,'資料底線'+(i+1),slideW*.34,ys[i]+slideH*.070,slideW*.48,Math.max(9000,slideH*.002),'6D8ED0')});
+  out+=textShapeXml(id++,'報告單位及報告人',slideW*.13,slideH*.665,slideW*.74,slideH*.06,'焊接裝聯設備事業部　｜　報告人：秦富科',{size:14,color:'64748B',align:'ctr'});
+  out+=textShapeXml(id++,'承邦有限公司',slideW*.20,slideH*.82,slideW*.60,slideH*.05,'承邦有限公司',{size:20,color:'334155',align:'ctr'});
+  out+=textShapeXml(id++,'承邦公司網址',slideW*.20,slideH*.875,slideW*.60,slideH*.04,'http://www.cbtrade.com.tw',{size:12,color:'64748B',align:'ctr'});
+  return out;
+}
+function projectClosingShapes(slideW,slideH,logoAspect,logoRid,endRid,referenceAspect){
+  const posterH=slideH,posterW=Math.round(posterH*referenceAspect),posterX=Math.round((slideW-posterW)/2);
+  const logo=fitLogoBox(slideW,slideH,logoAspect,slideW*.16,slideH*.085,slideW*.80,slideH*.018);
+  return rectShapeXml(2,'純白背景',0,0,slideW,slideH,'FFFFFF')+
+    pictureShapeXml(3,'承邦致謝頁',endRid,posterX,0,posterW,posterH,'參考承邦有限公司 THE END Thanks 結尾版面')+
+    pictureShapeXml(4,'VECTECH Company Logo',logoRid,logo.x,logo.y,logo.w,logo.h,'VECTECH 威鐵克企業標誌');
+}
+function projectHeaderXml(slideXml,slideW,slideH,meta){
+  const ids=[...slideXml.matchAll(/<p:cNvPr\b[^>]*\bid="(\d+)"/g)].map(m=>Number(m[1]));
+  const id=Math.max(1,...ids)+1,text='項目編號：'+(meta.id||'')+'　版本代號：'+(meta.version||'')+'　發布日期：'+(meta.date||'');
+  const header=textShapeXml(id,'專案識別頁首',slideW*.255,slideH*.022,slideW*.49,slideH*.075,text,{size:9.5,color:'475569',align:'ctr'});
+  return slideXml.replace('</p:spTree>',header+'</p:spTree>');
+}
+async function cleanPptx(file,logoFile){
+  if(!window.JSZip)throw new Error('PPTX 本機解壓引擎尚未載入，請重新整理 App 後再試');
+  if(!logoFile)throw new Error('請先選擇公司 Logo（PNG 或 JPG）');
+  const zip=await JSZip.loadAsync(await file.arrayBuffer());
+  const presentation=await zip.file('ppt/presentation.xml').async('string');
+  const size=presentation.match(/<p:sldSz\b[^>]*cx="(\d+)"[^>]*cy="(\d+)"/);
+  const slideW=size?Number(size[1]):12192000,slideH=size?Number(size[2]):6858000;
+  const logoCanvas=await prepareUserLogo(await getCompanyLogoData(logoFile));
+  const logoBytes=Uint8Array.from(atob(logoCanvas.toDataURL('image/png').split(',')[1]),ch=>ch.charCodeAt(0));
+  const aspect=logoCanvas.width/logoCanvas.height;
+  const slideNames=Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a,b)=>Number(a.match(/slide(\d+)/)[1])-Number(b.match(/slide(\d+)/)[1]));
+  if(!slideNames.length)throw new Error('PPTX 內找不到可處理的投影片');
+  const meta=getProjectMeta(file.name),isProjectDeck=/^TWXBCB\d+/i.test(meta.id)&&slideNames.length>=3;
+  const closingBytes=isProjectDeck?await getClosingReferenceBytes():null;
+  const refDims=closingBytes?{width:new DataView(closingBytes.buffer,closingBytes.byteOffset,closingBytes.byteLength).getUint32(16),height:new DataView(closingBytes.buffer,closingBytes.byteOffset,closingBytes.byteLength).getUint32(20)}:null;
+  await removeQuickLayoutBranding(zip);
+  for(const [index,name] of slideNames.entries()){
+    setStatus('正在處理第 '+(index+1)+' / '+slideNames.length+' 張投影片','繁體中文轉換、清除 QUICK 文字與背景並套用承邦版面');
+    let xml=await zip.file(name).async('string');
+    xml=translateXmlText(xml,getTC());
+    xml=clearQuickFooterShapes(cleanXml(xml));
+    const relPath=name.replace('ppt/slides/','ppt/slides/_rels/')+'.rels';
+    let rels=zip.file(relPath)?await zip.file(relPath).async('string'):'';
+    const quickAssets=new Set(['image1.png','image5.png','image7.png','image8.png','image9.png','image10.png']);
+    const relTargets=new Map([...rels.matchAll(/<Relationship\b([^>]*?)\/>/g)].map(m=>[((m[1].match(/\bId="([^"]+)"/)||[])[1]),((m[1].match(/\bTarget="([^"]+)"/)||[])[1]||'').split('/').pop().toLowerCase()]));
+    xml=xml.replace(/<p:pic\b[\s\S]*?<\/p:pic>/g,pic=>{const rid=(pic.match(/r:embed="([^"]+)"/)||[])[1];return quickAssets.has(relTargets.get(rid))?'':pic});
+    if(isProjectDeck&&index===0){
+      const [logoRid]=await addSlideImageRelations(zip,name,['vectech-company-logo.png']);
+      xml=templateSlideXml(xml,companyOpeningShapes(slideW,slideH,aspect,logoRid));
+    }else if(isProjectDeck&&index===1){
+      const [logoRid]=await addSlideImageRelations(zip,name,['vectech-company-logo.png']);
+      xml=templateSlideXml(xml,projectCoverShapes(slideW,slideH,aspect,logoRid,meta));
+    }else if(isProjectDeck&&index===slideNames.length-1){
+      const [logoRid,endRid]=await addSlideImageRelations(zip,name,['vectech-company-logo.png','thank-you-reference.png']);
+      xml=templateSlideXml(xml,projectClosingShapes(slideW,slideH,aspect,logoRid,endRid,refDims.width/refDims.height));
+    }else{
+      if(isProjectDeck&&index>=2&&index<slideNames.length-1)xml=projectHeaderXml(xml,slideW,slideH,meta);
+      const relMatches=[...rels.matchAll(/\bId="rId(\d+)"/g)].map(m=>Number(m[1]));
+      const rId='rId'+(Math.max(0,...relMatches)+1);
+      xml=logoXml(xml,rId,slideW,slideH,aspect,false,false);
+      rels=addImageRelationship(rels,rId);
+      zip.file(relPath,rels,{compression:'DEFLATE'});
+    }
+    zip.file(name,xml,{compression:'DEFLATE'});
+  }
+  for(const name of Object.keys(zip.files)){
+    if(!name.startsWith('ppt/')||!name.endsWith('.xml')||/^ppt\/slides\/slide\d+\.xml$/.test(name))continue;
+    const xml=await zip.file(name).async('string');
+    const updated=clearQuickFooterShapes(translateXmlText(xml,getTC()));
+    if(updated!==xml)zip.file(name,cleanXml(updated),{compression:'DEFLATE'});
+  }
+  zip.file('ppt/media/vectech-company-logo.png',logoBytes,{binary:true,compression:'DEFLATE'});
+  if(closingBytes)zip.file('ppt/media/thank-you-reference.png',closingBytes,{binary:true,compression:'DEFLATE'});
+  const types=await zip.file('[Content_Types].xml').async('string');
+  if(!/Extension="png"/i.test(types))zip.file('[Content_Types].xml',types.replace('</Types>','<Default Extension="png" ContentType="image/png"/></Types>'),{compression:'DEFLATE'});
+  return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:3},streamFiles:true});
+}
+function getProjectMeta(name){
+  const base=name.replace(/\.(pdf|pptx)$/i,'');
+  const idMatch=base.match(/TWXBCB\d+(?:-\d{8})?/i);
+  const id=idMatch?idMatch[0]:'';
+  const versionMatch=base.match(/V\d+(?:\.\d+)?/i);
+  const version=versionMatch?versionMatch[0]:'VER1.0';
+
+  let title='';
+  if(id){
+    const after=base.slice(id.length).replace(/^[-_]+/,'');
+    title=after.split(/20\d{2}[-.]?\d{2}[-.]?\d{2}/)[0].replace(/[-_]+$/,'').trim();
+  }
+  if(!title){
+    const chinese=base.match(/[\u3400-\u9fff]{2,}/);
+    title=chinese?chinese[0]:'紅外線BGA返修設備';
+  }
+
+  const dates=[...base.matchAll(/20\d{2}[-.]?\d{2}[-.]?\d{2}/g)].map(m=>m[0]);
+  const date=dates.length?dates[dates.length-1]:'';
+  const dateDigits=date.replace(/\D/g,'');
+  const formattedDate=/^\d{8}$/.test(dateDigits)?dateDigits.slice(0,4)+'.'+dateDigits.slice(4,6)+'.'+dateDigits.slice(6):date.replace(/-/g,'.');
+  return {id,date:formattedDate,version,title:getTC()(title)};
+}
+function makeOutputName(originalName){
+  let base=String(originalName||'未命名');
+  base=base.replace(/\.(pdf|pptx)$/i,'').replace(/\s*\(\d+\)$/,'');
+  // 移除任何數量的「承邦轉檔」前綴（含底線、連字號或空白）。
+  base=base.replace(/^(?:承邦轉檔(?:[_\-\s]*)?)+/,'');
+  // 來源檔名的簡體中文一律轉成繁體中文。
+  base=getTC()(base);
+  // 再做一次固定字串清理，避免任何舊版本名稱混入。
+  base=base.replace(/承邦轉檔/g,'').replace(/^[_\-\s]+/,'');
+  return base+'.pptx';
+}
+function fitFont(ctx,text,maxWidth,start){
+  let size=start;
+  while(size>12){ctx.font='700 '+size+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';if(ctx.measureText(text).width<=maxWidth)return size;size-=1}
+  return size;
+}
+async function translatePdfPage(pdf,page,canvas,ctx,scale,converter){
+  const text=await page.getTextContent();
+  for(const item of text.items||[]){
+    if(!item.str||!item.str.trim())continue;
+    const hasQuick=/QUICK/i.test(item.str);
+    const translated=converter(item.str);
+    if(!hasQuick&&translated===item.str)continue;
+    const tx=item.transform;
+    const x=tx[4]*scale;
+    const y=canvas.height-(tx[5]*scale);
+    const h=Math.max(14,Math.abs(tx[3]||tx[0]||12)*scale);
+    const w=Math.max(20,(item.width||20)*scale);
+    ctx.fillStyle='#FFFFFF';
+    ctx.fillRect(x-2,y-h-3,w+5,h+7);
+    if(hasQuick)continue;
+    const fs=Math.max(12,Math.min(42,h*.9));
+    ctx.font='500 '+fs+'px -apple-system,BlinkMacSystemFont,"Noto Sans TC",sans-serif';
+    ctx.fillStyle='#222';
+    ctx.textBaseline='alphabetic';
+    ctx.fillText(translated,x,y);
+  }
+}
+async function drawHeaderTemplate(ctx,w,h,meta,machineCanvas,logoData){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+
+  if(logoData){
+    const logoCanvas=await prepareUserLogo(logoData);
+    const maxW=w*.29,maxH=h*.13;
+    const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+    const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+    ctx.drawImage(logoCanvas,w*.045,h*.025,lw,lh);
+  }
+
+  const title=meta.title||'紅外線BGA返修設備';
+  ctx.textAlign='center';
+  ctx.fillStyle='#4b5563';
+  ctx.font='500 '+Math.round(w*.026)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText(title,w*.50,h*.225);
+
+  ctx.textAlign='left';
+  ctx.fillStyle='#111';
+  ctx.font='500 '+Math.round(w*.022)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('項目編號：',w*.25,h*.39);
+  ctx.fillText('版本代號：',w*.25,h*.49);
+  ctx.fillText('發佈日期：',w*.25,h*.59);
+
+  ctx.strokeStyle='#9aa9bf';ctx.lineWidth=2;
+  for(const yy of [.405,.505,.605]){
+    ctx.beginPath();ctx.moveTo(w*.35,h*yy);ctx.lineTo(w*.70,h*yy);ctx.stroke();
+  }
+
+  ctx.fillStyle='#4b5563';ctx.font='700 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.id||'',w*.43,h*.39);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText(meta.version||'VER1.0',w*.48,h*.49);
+  ctx.fillText(meta.date||'',w*.48,h*.59);
+
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.024)+'px "Noto Sans TC",sans-serif';
+  ctx.fillText('承邦有限公司',w*.43,h*.78);
+  ctx.font='500 '+Math.round(w*.019)+'px Arial,sans-serif';
+  ctx.fillText('www.cbtrade.com.tw',w*.43,h*.83);
+}
+async function prepareUserLogo(logoData){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        // Bound canvas memory on phones while retaining enough resolution for slide logos.
+        const maxEdge=2200,maxPixels=3500000,scale=Math.min(1,maxEdge/Math.max(img.naturalWidth,img.naturalHeight),Math.sqrt(maxPixels/(img.naturalWidth*img.naturalHeight)));
+        const src=document.createElement('canvas');
+        src.width=Math.max(1,Math.round(img.naturalWidth*scale));src.height=Math.max(1,Math.round(img.naturalHeight*scale));
+        const sctx=src.getContext('2d',{willReadFrequently:true});sctx.drawImage(img,0,0,src.width,src.height);
+        const imageData=sctx.getImageData(0,0,src.width,src.height),d=imageData.data,w=src.width,h=src.height,total=w*h;
+        const edgeBand=Math.max(2,Math.round(Math.min(w,h)*.035)),sampleStep=Math.max(1,Math.floor(Math.min(w,h)/900));
+        const bins=new Map();let edgeSamples=0,transparentEdge=0;
+        for(let y=0;y<h;y+=sampleStep)for(let x=0;x<w;x+=sampleStep){
+          if(x>=edgeBand&&x<w-edgeBand&&y>=edgeBand&&y<h-edgeBand)continue;
+          const p=(y*w+x)*4,a=d[p+3];edgeSamples++;
+          if(a<32){transparentEdge++;continue}
+          const r=d[p],g=d[p+1],b=d[p+2],key=((r>>5)<<10)|((g>>5)<<5)|(b>>5);
+          let v=bins.get(key);if(!v){v={count:0,r:0,g:0,b:0};bins.set(key,v)}
+          v.count++;v.r+=r;v.g+=g;v.b+=b;
+        }
+        let bestKey=null,best=null;for(const [key,v] of bins)if(!best||v.count>best.count){bestKey=key;best=v}
+        const backgroundInfo={removed:false,preservedTransparency:transparentEdge/Math.max(1,edgeSamples)>.12,color:null};
+        if(!backgroundInfo.preservedTransparency&&best){
+          const share=best.count/Math.max(1,edgeSamples-transparentEdge);
+          if(share>=.18){
+            const bg={r:best.r/best.count,g:best.g/best.count,b:best.b/best.count},bgDists=[];
+            for(let y=0;y<h;y+=sampleStep)for(let x=0;x<w;x+=sampleStep){
+              if(x>=edgeBand&&x<w-edgeBand&&y>=edgeBand&&y<h-edgeBand)continue;
+              const p=(y*w+x)*4;if(d[p+3]<32)continue;
+              const key=((d[p]>>5)<<10)|((d[p+1]>>5)<<5)|(d[p+2]>>5);
+              if(key===bestKey){const dr=d[p]-bg.r,dg=d[p+1]-bg.g,db=d[p+2]-bg.b;bgDists.push(Math.sqrt(dr*dr+dg*dg+db*db))}
+            }
+            bgDists.sort((a,b)=>a-b);const noiseFloor=bgDists.length?bgDists[Math.floor((bgDists.length-1)*.9)]:0;
+            const distHist=new Uint32Array(512);let sampled=0,step=Math.max(1,Math.floor(total/120000));
+            for(let i=0;i<total;i+=step){const p=i*4;if(d[p+3]<32)continue;const dr=d[p]-bg.r,dg=d[p+1]-bg.g,db=d[p+2]-bg.b,dist=Math.sqrt(dr*dr+dg*dg+db*db);distHist[Math.min(511,Math.round(dist))]++;sampled++}
+            const target=Math.max(1,Math.floor(sampled*.96));let acc=0,contrast=0;for(;contrast<distHist.length;contrast++){acc+=distHist[contrast];if(acc>=target)break}
+            if(contrast>noiseFloor+20&&noiseFloor<Math.min(40,contrast*.2)){
+              const removeFloor=Math.min(38,Math.max(3,noiseFloor*1.25+2));
+              for(let i=0;i<total;i++){
+                const p=i*4,originalAlpha=d[p+3];if(originalAlpha<8)continue;
+                const oldR=d[p],oldG=d[p+1],oldB=d[p+2],dr=oldR-bg.r,dg=oldG-bg.g,db=oldB-bg.b,dist=Math.sqrt(dr*dr+dg*dg+db*db);
+                if(dist<=removeFloor){d[p+3]=0;continue}
+                if(dist<contrast*.96){
+                  const a=Math.max(.02,Math.min(1,(dist-removeFloor)/(contrast-removeFloor)));
+                  if(a<.035){d[p+3]=0;continue}
+                  // Remove the matte color from antialiased edge pixels before saving their new alpha.
+                  d[p]=Math.max(0,Math.min(255,Math.round((oldR-bg.r*(1-a))/a)));
+                  d[p+1]=Math.max(0,Math.min(255,Math.round((oldG-bg.g*(1-a))/a)));
+                  d[p+2]=Math.max(0,Math.min(255,Math.round((oldB-bg.b*(1-a))/a)));
+                  d[p+3]=Math.round(originalAlpha*a);
+                }
+              }
+              const spread=Math.max(bg.r,bg.g,bg.b)-Math.min(bg.r,bg.g,bg.b),lum=(bg.r+bg.g+bg.b)/3;
+              const color=spread<38?(lum<55?'黑色':lum>220?'白色':'灰色'):'純色';
+              backgroundInfo.removed=true;backgroundInfo.color=color;
+            }
+          }
+        }
+        sctx.putImageData(imageData,0,0);
+        let minX=w,minY=h,maxX=-1,maxY=-1;
+        for(let y=0;y<h;y++)for(let x=0;x<w;x++){const a=d[(y*w+x)*4+3];if(a>10){if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y}}
+        if(maxX<minX||maxY<minY){src._logoBackgroundInfo=backgroundInfo;resolve(src);return}
+        const pad=Math.max(4,Math.round(Math.min(w,h)*.04));minX=Math.max(0,minX-pad);minY=Math.max(0,minY-pad);maxX=Math.min(w-1,maxX+pad);maxY=Math.min(h-1,maxY+pad);
+        const out=document.createElement('canvas');out.width=maxX-minX+1;out.height=maxY-minY+1;
+        out.getContext('2d').drawImage(src,minX,minY,out.width,out.height,0,0,out.width,out.height);
+        out._logoBackgroundInfo=backgroundInfo;resolve(out);
+      }catch(error){reject(error)}
+    };
+    img.onerror=reject;
+    img.src=logoData;
+  });
+}
+
+let preparedUploadedLogoFile=null,preparedUploadedLogoPromise=null,logoPreviewToken=0;
+function getPreparedUploadedLogo(file){
+  if(preparedUploadedLogoFile===file&&preparedUploadedLogoPromise)return preparedUploadedLogoPromise;
+  preparedUploadedLogoFile=file;
+  preparedUploadedLogoPromise=(async()=>{const canvas=await prepareUserLogo(await fileToDataURL(file));return {canvas,dataURL:canvas.toDataURL('image/png'),info:canvas._logoBackgroundInfo||{}}})();
+  return preparedUploadedLogoPromise;
+}
+$('logo').addEventListener('change',async()=>{
+  const file=$('logo').files[0],wrap=$('logoPreviewWrap'),preview=$('logoPreview'),status=$('logoPreviewStatus'),token=++logoPreviewToken;
+  if(!file){preparedUploadedLogoFile=null;preparedUploadedLogoPromise=null;wrap.classList.remove('visible');return}
+  wrap.classList.add('visible');status.textContent='正在分析 Logo 並去背…';
+  try{
+    const result=await getPreparedUploadedLogo(file);if(token!==logoPreviewToken)return;
+    preview.width=result.canvas.width;preview.height=result.canvas.height;preview.getContext('2d').drawImage(result.canvas,0,0);
+    status.textContent=result.info.removed?'已自動去除'+result.info.color+'背景，並保留柔和邊緣。':result.info.preservedTransparency?'已保留原有透明背景，並裁切多餘空白。':'未偵測到可安全移除的外圍純色背景，已保留原圖。';
+  }catch(error){if(token===logoPreviewToken)status.textContent='LOGO 預覽失敗：'+(error&&error.message?error.message:'無法讀取圖片')}
+});
+
+async function eraseQuickLogoAndPlaceUserLogo(ctx,w,h,logoData){
+  // QUICK 原 Logo 固定位於內容頁右上角。
+  // 先完整清空該區域，再放入使用者 Logo，確保不會殘留 QUICK 字樣。
+  // 清除範圍避開下方設備圖與標題內容。
+  const x=Math.floor(w*.805);
+  const y=0;
+  const rw=Math.floor(w*.195);
+  const rh=Math.floor(h*.155);
+  ctx.save();
+  ctx.fillStyle='#FFFFFF';
+  ctx.fillRect(x,y,rw,rh);
+  ctx.restore();
+
+  if(!logoData)return;
+  const logoCanvas=await prepareUserLogo(logoData);
+
+  // Logo 優先放大，但只能放在剛清空的右上安全區。
+  const maxW=rw*.92, maxH=rh*.78;
+  const ratio=Math.min(maxW/logoCanvas.width,maxH/logoCanvas.height);
+  const lw=logoCanvas.width*ratio,lh=logoCanvas.height*ratio;
+  const lx=x+(rw-lw)/2,ly=y+(rh-lh)/2;
+  ctx.drawImage(logoCanvas,lx,ly,lw,lh);
+}
+
+function drawFooterTemplate(ctx,w,h){
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);
+  ctx.textAlign='center';
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.075)+'px Arial,sans-serif';ctx.fillText('THE END',w*.50,h*.39);
+  ctx.fillStyle='#008b95';ctx.font='900 '+Math.round(w*.058)+'px Arial,sans-serif';ctx.fillText('Thanks',w*.50,h*.49);
+  ctx.fillStyle='#111';ctx.font='500 '+Math.round(w*.027)+'px "Noto Sans TC",sans-serif';ctx.fillText('承邦有限公司',w*.50,h*.78);
+  ctx.font='500 '+Math.round(w*.020)+'px Arial,sans-serif';ctx.fillText('http://www.cbtrade.com.tw',w*.50,h*.84);
+  ctx.fillStyle='#FFFFFF';ctx.fillRect(w*.35,h*.875,w*.30,h*.08);
+  // 清除原頁尾日期：承邦版本頁尾不保留 QUICK 原日期。
+
+}
+async function pdfToPptx(file,logo){
+  await waitForGlobal('pdfjsLib',15000,'PDF 轉檔程式尚未載入，請確認網路後重試');
+  const data=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data}).promise;
+  if(!pdf.numPages)throw new Error('PDF 沒有可轉換的頁面');
+  const first=await pdf.getPage(1), base=first.getViewport({scale:1});
+  const ratio=base.height/base.width, slideW=10, slideH=Math.max(5.625,Math.min(13.333,slideW*ratio));
+  const pptx=new PptxGenJS();pptx.defineLayout({name:'CBPDF',width:slideW,height:slideH});pptx.layout='CBPDF';
+  pptx.author='承邦有限公司';pptx.subject='PDF 轉 PPTX';pptx.title='承邦 PDF 轉 PPTX';
+  const converter=getTC(); const meta=getProjectMeta(file.name); meta.title=converter(meta.title||'紅外線BGA返修設備').replace(/红外线/g,'紅外線').replace(/返修/g,'返修').replace(/设备/g,'設備'); const logoData=await getCompanyLogoData(logo);
+  for(let i=1;i<=pdf.numPages;i++){
+    setStatus('正在處理 PDF 第 '+i+' / '+pdf.numPages+' 頁','繁體中文轉換、移除 QUICK 文字並套用頁首／頁尾，全部在手機本機處理');
+    const page=i===1?first:await pdf.getPage(i), vp=page.getViewport({scale:1.5});
+    const canvas=document.createElement('canvas');canvas.width=Math.ceil(vp.width);canvas.height=Math.ceil(vp.height);
+    const ctx=canvas.getContext('2d',{alpha:false});await page.render({canvasContext:ctx,viewport:vp}).promise;
+    if(i>1 && i<pdf.numPages) await translatePdfPage(pdf,page,canvas,ctx,1.5,converter);
+    if(i===1){
+      const machine=canvas;const cover=document.createElement('canvas');cover.width=canvas.width;cover.height=canvas.height;
+      const cctx=cover.getContext('2d',{alpha:false});await drawHeaderTemplate(cctx,cover.width,cover.height,meta,null,logoData); 
+      const img=cover.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else if(i===pdf.numPages){
+      const foot=document.createElement('canvas');foot.width=canvas.width;foot.height=canvas.height;drawFooterTemplate(foot.getContext('2d',{alpha:false}),foot.width,foot.height);
+      const img=foot.toDataURL('image/jpeg',.9);const slide=pptx.addSlide();slide.background={color:'FFFFFF'};slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }else{
+      // 所有內容頁：清除右下角 QUICK 網址／電話與左下角 QUICK 標誌文字，
+      // 再清除右上角 QUICK Logo，最後放入使用者 Logo。
+      const fw=canvas.width, fh=canvas.height;
+      ctx.save();
+      ctx.fillStyle='#FFFFFF';
+      ctx.fillRect(fw*.76,fh*.935,fw*.24,fh*.065);
+      ctx.fillRect(0,fh*.935,fw*.24,fh*.065);
+      ctx.restore();
+      await eraseQuickLogoAndPlaceUserLogo(ctx,fw,fh,logoData);
+      const img=canvas.toDataURL('image/jpeg',.88);
+      const slide=pptx.addSlide();
+      slide.background={color:'FFFFFF'};
+      slide.addImage({data:img,x:0,y:0,w:slideW,h:slideH});
+    }
+    canvas.width=1;canvas.height=1;
+  }
+  return pptx.write({outputType:'blob'});
+}
+$('form').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const file=$('file').files[0],logo=$('logo').files[0];if(!file)return;
+ $('submit').disabled=true;hide('ok');hide('err');$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
+ try{
+   const ext=file.name.toLowerCase().split('.').pop();
+   let blob,name;
+   if(ext==='pdf'){
+     blob=await pdfToPptx(file,logo);
+     name=makeOutputName(file.name);
+   }else if(ext==='pptx'){
+     setStatus('正在讀取簡報內容','大型簡報會在手機本機處理，請保持 App 開啟');
+     blob=await cleanPptx(file,logo);
+     name=makeOutputName(file.name);
+   }else throw new Error('只支援 PPTX 或 PDF');
+   // 最後一道保險：輸出前再次正規化檔名，絕不允許「承邦轉檔」前綴流出。
+   name=makeOutputName(name);
+   hide('status');
+   const out=new File([blob],name,{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+   if(navigator.share&&navigator.canShare&&navigator.canShare({files:[out]})){
+     try{await navigator.share({files:[out]});show('ok','✅ 轉檔完成，僅輸出 PPTX 轉檔檔案。')}
+     catch(x){if(x.name==='AbortError')show('ok','✅ 轉檔完成。檔案已準備好，可重新操作分享／儲存。');else download(blob,name)}
+   }else download(blob,name);
+ }catch(x){
+   hide('status');show('err','❌ 轉檔失敗：'+(x&&x.message?x.message:'未知錯誤'));
+ }finally{$('submit').disabled=false}
+});
+$('backend').textContent='🟢 本機轉檔引擎已啟用';$('backend').style.color='#15803d';
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15').catch(()=>{});
+</script>
+</body></html>
+
