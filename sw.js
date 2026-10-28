@@ -1,8 +1,16 @@
-const CACHE='cbtrade-ppt-converter-v8';
-const SHELL=['./','./index.html','./converter.html','./app.html','./manifest.webmanifest','./icon.svg','./vendor/pptxgen.min.js'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting()))});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
-self.addEventListener('fetch',e=>{
- if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return;
- e.respondWith(fetch(e.request).then(r=>{if(r.ok){const copy=r.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return r}).catch(()=>caches.match(e.request).then(r=>r||caches.match('./converter.html'))))
+const CACHE='cbtrade-ppt-converter-v12';
+const SHELL=['./','./index.html','./converter.html','./app.html','./manifest.webmanifest','./icon.svg','./vendor/jszip.min.js','./vendor/pptxgen.min.js','./assets/vectech-logo.png.b64'];
+const CDN_HOSTS=new Set(['cdnjs.cloudflare.com','cdn.jsdelivr.net']);
+self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(CACHE);await cache.addAll(SHELL);await self.skipWaiting()})()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{const keys=await caches.keys();await Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)));await self.clients.claim()})()));
+self.addEventListener('fetch',event=>{
+ const request=event.request,url=new URL(request.url);
+ if(request.method!=='GET')return;
+ const local=url.origin===location.origin;
+ if(!local&&!CDN_HOSTS.has(url.hostname))return;
+ event.respondWith((async()=>{
+  const cached=await caches.match(request,{ignoreSearch:true});if(cached)return cached;
+  try{const response=await fetch(request);if(response.ok||response.type==='opaque'){const cache=await caches.open(CACHE);await cache.put(request,response.clone())}return response}
+  catch(error){if(local)return (await caches.match('./app.html'))||(await caches.match('./converter.html'));throw error}
+ })());
 });
